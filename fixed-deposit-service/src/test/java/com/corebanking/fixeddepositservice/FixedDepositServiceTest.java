@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,10 +15,13 @@ import com.corebanking.fixeddepositservice.dto.CreateFixedDepositRequest;
 import com.corebanking.fixeddepositservice.dto.FixedDepositResponse;
 import com.corebanking.fixeddepositservice.entity.FixedDeposit;
 import com.corebanking.fixeddepositservice.enums.FixedDepositStatus;
+import com.corebanking.fixeddepositservice.exception.FixedDepositNotActiveException;
 import com.corebanking.fixeddepositservice.exception.FixedDepositNotFoundException;
 import com.corebanking.fixeddepositservice.exception.PrematureWithdrawalException;
 import com.corebanking.fixeddepositservice.repository.FixedDepositRepository;
 import com.corebanking.fixeddepositservice.service.FixedDepositService;
+import com.corebanking.fixeddepositservice.service.LedgerPostingService;
+import com.corebanking.fixeddepositservice.util.ClientServiceClient;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -30,6 +36,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class FixedDepositServiceTest {
 
   @Mock private FixedDepositRepository fixedDepositRepository;
+
+  @Mock private LedgerPostingService ledgerPostingService;
+
+  @Mock private ClientServiceClient clientServiceClient;
 
   @InjectMocks private FixedDepositService fixedDepositService;
 
@@ -67,12 +77,15 @@ class FixedDepositServiceTest {
     assertNotNull(response.getMaturityDate());
     assertNotNull(response.getMaturityAmount());
     verify(fixedDepositRepository, times(1)).save(any(FixedDeposit.class));
+    verify(ledgerPostingService)
+        .record(
+            eq("FIXED_DEPOSIT_CREATION"), eq(new BigDecimal("10000.00")), eq("FD-1"), anyString());
   }
 
   @Test
   void matureDeposit_beforeMaturityDate_shouldThrowException() {
     savedDeposit.setMaturityDate(LocalDate.now().plusDays(90));
-    when(fixedDepositRepository.findById(1L)).thenReturn(Optional.of(savedDeposit));
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
 
     assertThrows(PrematureWithdrawalException.class, () -> fixedDepositService.matureDeposit(1L));
   }
@@ -100,12 +113,36 @@ class FixedDepositServiceTest {
     maturedDeposit.setMaturityAmount(new BigDecimal("10591.78"));
     maturedDeposit.setStatus(FixedDepositStatus.MATURED);
 
-    when(fixedDepositRepository.findById(1L)).thenReturn(Optional.of(savedDeposit));
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
     when(fixedDepositRepository.save(any(FixedDeposit.class))).thenReturn(maturedDeposit);
 
     FixedDepositResponse response = fixedDepositService.matureDeposit(1L);
 
     assertNotNull(response);
     assertEquals(FixedDepositStatus.MATURED, response.getStatus());
+    verify(ledgerPostingService)
+        .record(
+            eq("FIXED_DEPOSIT_MATURITY"),
+            eq(new BigDecimal("10000.00")),
+            eq("FD-MAT-1"),
+            anyString());
+    verify(ledgerPostingService)
+        .record(
+            eq("FIXED_DEPOSIT_INTEREST"),
+            eq(new BigDecimal("591.78")),
+            eq("FD-INT-1"),
+            anyString());
+  }
+
+  @Test
+  void matureDeposit_alreadyMatured_shouldThrowExceptionAndPostNothing() {
+    savedDeposit.setMaturityDate(LocalDate.now().minusDays(1));
+    savedDeposit.setStatus(FixedDepositStatus.MATURED);
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
+
+    assertThrows(FixedDepositNotActiveException.class, () -> fixedDepositService.matureDeposit(1L));
+
+    verify(fixedDepositRepository, never()).save(any(FixedDeposit.class));
+    verify(ledgerPostingService, never()).record(anyString(), any(), anyString(), anyString());
   }
 }

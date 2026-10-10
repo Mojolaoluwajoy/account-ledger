@@ -9,6 +9,7 @@ import com.corebanking.ledgerservice.repository.GlAccountRepository;
 import com.corebanking.ledgerservice.repository.LedgerEntryRepository;
 import com.corebanking.ledgerservice.util.LedgerEntryMapper;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,20 @@ public class LedgerService {
   public LedgerEntryResponse postEntry(PostLedgerEntryRequest request) {
     log.info("Posting ledger entry for transaction type: {}", request.getTransactionType());
 
+    /*
+     * Callers retry when they are unsure a posting went through, so the same
+     * reference must never create a second entry.
+     */
+    if (request.getTransactionReference() != null) {
+      Optional<LedgerEntry> existing =
+          ledgerEntryRepository.findFirstByTransactionReference(request.getTransactionReference());
+      if (existing.isPresent()) {
+        log.info(
+            "Ledger entry already posted for reference: {}", request.getTransactionReference());
+        return LedgerEntryMapper.toResponse(existing.get());
+      }
+    }
+
     String debitAccountCode;
     String creditAccountCode;
 
@@ -39,13 +54,20 @@ public class LedgerService {
         debitAccountCode = "2001";
         creditAccountCode = "1001";
       }
+      // Customer places a fixed deposit: cash comes in, we owe it back.
       case FIXED_DEPOSIT_CREATION -> {
-        debitAccountCode = "1002";
+        debitAccountCode = "1001";
+        creditAccountCode = "2002";
+      }
+      // Principal repaid at maturity: the obligation is settled in cash.
+      case FIXED_DEPOSIT_MATURITY -> {
+        debitAccountCode = "2002";
         creditAccountCode = "1001";
       }
-      case FIXED_DEPOSIT_MATURITY -> {
-        debitAccountCode = "1001";
-        creditAccountCode = "1002";
+      // Interest paid at maturity: an expense, paid in cash.
+      case FIXED_DEPOSIT_INTEREST -> {
+        debitAccountCode = "5001";
+        creditAccountCode = "1001";
       }
       default ->
           throw new IllegalArgumentException(

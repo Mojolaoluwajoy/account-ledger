@@ -1,4 +1,4 @@
-package com.corebanking.fineractintegrationservice;
+package com.corebanking.fineractintegration;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

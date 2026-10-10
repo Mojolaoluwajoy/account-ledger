@@ -2,6 +2,7 @@ package com.corebanking.savingsservice.service;
 
 import com.corebanking.savingsservice.dto.OpenSavingsAccountRequest;
 import com.corebanking.savingsservice.dto.SavingsAccountResponse;
+import com.corebanking.savingsservice.dto.SavingsTransactionResponse;
 import com.corebanking.savingsservice.dto.TransactionRequest;
 import com.corebanking.savingsservice.dto.TransactionResponse;
 import com.corebanking.savingsservice.entity.SavingsAccount;
@@ -9,15 +10,18 @@ import com.corebanking.savingsservice.entity.SavingsProduct;
 import com.corebanking.savingsservice.entity.SavingsTransaction;
 import com.corebanking.savingsservice.enums.SavingsAccountStatus;
 import com.corebanking.savingsservice.enums.TransactionType;
+import com.corebanking.savingsservice.exception.AccountNotActiveException;
 import com.corebanking.savingsservice.exception.AccountNotFoundException;
 import com.corebanking.savingsservice.exception.InsufficientBalanceException;
 import com.corebanking.savingsservice.exception.ProductNotFoundException;
 import com.corebanking.savingsservice.repository.SavingsAccountRepository;
 import com.corebanking.savingsservice.repository.SavingsProductRepository;
 import com.corebanking.savingsservice.repository.SavingsTransactionRepository;
-import com.corebanking.savingsservice.util.LedgerClient;
+import com.corebanking.savingsservice.util.ClientServiceClient;
 import com.corebanking.savingsservice.util.SavingsAccountMapper;
+import com.corebanking.savingsservice.util.SavingsTransactionMapper;
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -31,14 +35,21 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class SavingsAccountService {
 
+  private static final String LEDGER_DEPOSIT = "SAVINGS_DEPOSIT";
+  private static final String LEDGER_WITHDRAWAL = "SAVINGS_WITHDRAWAL";
+  private static final SecureRandom RANDOM = new SecureRandom();
+
   private final SavingsAccountRepository savingsAccountRepository;
   private final SavingsProductRepository savingsProductRepository;
   private final SavingsTransactionRepository savingsTransactionRepository;
-  private final LedgerClient ledgerClient;
+  private final LedgerPostingService ledgerPostingService;
+  private final ClientServiceClient clientServiceClient;
 
   @Transactional
   public SavingsAccountResponse openAccount(OpenSavingsAccountRequest request) {
     log.info("Opening savings account for client ID: {}", request.getClientId());
+
+    clientServiceClient.requireClientExists(request.getClientId());
 
     SavingsProduct product =
         savingsProductRepository
@@ -67,6 +78,15 @@ public class SavingsAccountService {
     SavingsAccount savedAccount = savingsAccountRepository.save(account);
     log.info("Savings account opened successfully: {}", savedAccount.getAccountNumber());
 
+    recordTransaction(
+        savedAccount,
+        TransactionType.DEPOSIT,
+        LEDGER_DEPOSIT,
+        request.getInitialDeposit(),
+        BigDecimal.ZERO,
+        request.getInitialDeposit(),
+        "Opening deposit");
+
     return SavingsAccountMapper.toResponse(savedAccount);
   }
 
@@ -76,7 +96,7 @@ public class SavingsAccountService {
 
     SavingsAccount account =
         savingsAccountRepository
-            .findById(accountId)
+            .findByIdForUpdate(accountId)
             .orElseThrow(
                 () ->
                     new AccountNotFoundException(
@@ -91,16 +111,14 @@ public class SavingsAccountService {
     account.setAvailableBalance(newBalance);
     SavingsAccount savedAccount = savingsAccountRepository.save(account);
 
-    SavingsTransaction transaction = new SavingsTransaction();
-    transaction.setAccount(account);
-    transaction.setTransactionType(TransactionType.DEPOSIT);
-    transaction.setAmount(request.getAmount());
-    transaction.setBalanceBefore(balanceBefore);
-    transaction.setBalanceAfter(newBalance);
-    savingsTransactionRepository.save(transaction);
-
-    ledgerClient.postDepositEntry(
-        request.getAmount(), savedAccount.getAccountNumber() + "-" + System.currentTimeMillis());
+    recordTransaction(
+        savedAccount,
+        TransactionType.DEPOSIT,
+        LEDGER_DEPOSIT,
+        request.getAmount(),
+        balanceBefore,
+        newBalance,
+        "Savings deposit");
     log.info("Deposit successful. New balance: {}", newBalance);
 
     return TransactionResponse.builder()
@@ -119,7 +137,7 @@ public class SavingsAccountService {
 
     SavingsAccount account =
         savingsAccountRepository
-            .findById(accountId)
+            .findByIdForUpdate(accountId)
             .orElseThrow(
                 () ->
                     new AccountNotFoundException(
@@ -129,6 +147,14 @@ public class SavingsAccountService {
 
     BigDecimal balanceBefore = account.getBalance();
     BigDecimal balanceAfterWithdrawal = balanceBefore.subtract(request.getAmount());
+
+    if (balanceAfterWithdrawal.compareTo(BigDecimal.ZERO) < 0) {
+      throw new InsufficientBalanceException(
+          "Withdrawal of "
+              + request.getAmount()
+              + " exceeds the available balance of "
+              + balanceBefore);
+    }
 
     if (account.getProduct().isEnforceMinimumBalance()
         && balanceAfterWithdrawal.compareTo(account.getProduct().getMinimumBalance()) < 0) {
@@ -143,16 +169,14 @@ public class SavingsAccountService {
     account.setAvailableBalance(balanceAfterWithdrawal);
     savingsAccountRepository.save(account);
 
-    SavingsTransaction transaction = new SavingsTransaction();
-    transaction.setAccount(account);
-    transaction.setTransactionType(TransactionType.WITHDRAWAL);
-    transaction.setAmount(request.getAmount());
-    transaction.setBalanceBefore(balanceBefore);
-    transaction.setBalanceAfter(balanceAfterWithdrawal);
-    savingsTransactionRepository.save(transaction);
-
-    ledgerClient.postWithdrawalEntry(
-        request.getAmount(), account.getAccountNumber() + "-" + System.currentTimeMillis());
+    recordTransaction(
+        account,
+        TransactionType.WITHDRAWAL,
+        LEDGER_WITHDRAWAL,
+        request.getAmount(),
+        balanceBefore,
+        balanceAfterWithdrawal,
+        "Savings withdrawal");
     log.info("Withdrawal successful. New balance: {}", balanceAfterWithdrawal);
 
     return TransactionResponse.builder()
@@ -187,7 +211,8 @@ public class SavingsAccountService {
     return SavingsAccountMapper.toResponse(account);
   }
 
-  public List<SavingsTransaction> getTransactionHistory(Long accountId) {
+  @Transactional(readOnly = true)
+  public List<SavingsTransactionResponse> getTransactionHistory(Long accountId) {
     log.info("Fetching transaction history for account ID: {}", accountId);
 
     savingsAccountRepository
@@ -195,12 +220,16 @@ public class SavingsAccountService {
         .orElseThrow(
             () -> new AccountNotFoundException("Savings account not found with ID: " + accountId));
 
-    return savingsTransactionRepository.findByAccountIdOrderByTransactionDateDesc(accountId);
+    return savingsTransactionRepository
+        .findByAccountIdOrderByTransactionDateDesc(accountId)
+        .stream()
+        .map(SavingsTransactionMapper::toResponse)
+        .collect(Collectors.toList());
   }
 
   private void validateAccountIsActive(SavingsAccount account) {
     if (account.getStatus() != SavingsAccountStatus.ACTIVE) {
-      throw new IllegalStateException(
+      throw new AccountNotActiveException(
           "Account "
               + account.getAccountNumber()
               + " is not active. Current status: "
@@ -208,7 +237,36 @@ public class SavingsAccountService {
     }
   }
 
+  /*
+   * Saves the transaction row and queues its ledger entry. Both are written
+   * in the caller's transaction, so they commit together with the new balance.
+   */
+  private void recordTransaction(
+      SavingsAccount account,
+      TransactionType type,
+      String ledgerType,
+      BigDecimal amount,
+      BigDecimal balanceBefore,
+      BigDecimal balanceAfter,
+      String description) {
+    SavingsTransaction transaction = new SavingsTransaction();
+    transaction.setAccount(account);
+    transaction.setTransactionType(type);
+    transaction.setAmount(amount);
+    transaction.setBalanceBefore(balanceBefore);
+    transaction.setBalanceAfter(balanceAfter);
+    transaction.setDescription(description);
+    SavingsTransaction savedTransaction = savingsTransactionRepository.save(transaction);
+
+    String reference = account.getAccountNumber() + "-" + savedTransaction.getId();
+    ledgerPostingService.record(ledgerType, amount, reference, description + " - " + reference);
+  }
+
   private String generateAccountNumber() {
-    return "SAV" + System.currentTimeMillis();
+    String accountNumber;
+    do {
+      accountNumber = String.format("SAV%010d", RANDOM.nextLong(10_000_000_000L));
+    } while (savingsAccountRepository.existsByAccountNumber(accountNumber));
+    return accountNumber;
   }
 }

@@ -19,6 +19,7 @@ public class LedgerEntry {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  @Column(unique = true)
   private String transactionReference;
 
   @Enumerated(EnumType.STRING)

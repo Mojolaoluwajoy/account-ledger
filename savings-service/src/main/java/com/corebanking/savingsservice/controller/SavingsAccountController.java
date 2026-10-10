@@ -1,7 +1,6 @@
 package com.corebanking.savingsservice.controller;
 
 import com.corebanking.savingsservice.dto.*;
-import com.corebanking.savingsservice.entity.SavingsTransaction;
 import com.corebanking.savingsservice.service.SavingsAccountService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -90,10 +89,11 @@ public class SavingsAccountController {
           "Returns full transaction history ordered by most recent first. "
               + "Same as the transaction history screen in internet banking.")
   @GetMapping("/{accountId}/transactions")
-  public ResponseEntity<ApiResponse<List<SavingsTransaction>>> getTransactionHistory(
+  public ResponseEntity<ApiResponse<List<SavingsTransactionResponse>>> getTransactionHistory(
       @PathVariable Long accountId) {
     log.info("Request received to fetch transaction history for account ID: {}", accountId);
-    List<SavingsTransaction> transactions = savingsAccountService.getTransactionHistory(accountId);
+    List<SavingsTransactionResponse> transactions =
+        savingsAccountService.getTransactionHistory(accountId);
     return ResponseEntity.ok(
         ApiResponse.success("Transaction history retrieved successfully", transactions));
   }

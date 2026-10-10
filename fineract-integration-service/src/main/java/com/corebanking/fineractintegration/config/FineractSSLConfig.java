@@ -5,10 +5,19 @@ import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/*
+ * Disables TLS certificate and hostname checks for calls to Fineract.
+ *
+ * Only for a local Fineract with a self-signed certificate. It is off unless
+ * fineract.ssl.trust-all=true, and must never be enabled against a real
+ * server: with it on, anyone on the network can impersonate Fineract.
+ */
 @Configuration
+@ConditionalOnProperty(name = "fineract.ssl.trust-all", havingValue = "true")
 public class FineractSSLConfig {
 
   @Bean

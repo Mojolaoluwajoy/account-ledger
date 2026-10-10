@@ -4,11 +4,12 @@ import com.corebanking.fixeddepositservice.dto.CreateFixedDepositRequest;
 import com.corebanking.fixeddepositservice.dto.FixedDepositResponse;
 import com.corebanking.fixeddepositservice.entity.FixedDeposit;
 import com.corebanking.fixeddepositservice.enums.FixedDepositStatus;
+import com.corebanking.fixeddepositservice.exception.FixedDepositNotActiveException;
 import com.corebanking.fixeddepositservice.exception.FixedDepositNotFoundException;
 import com.corebanking.fixeddepositservice.exception.PrematureWithdrawalException;
 import com.corebanking.fixeddepositservice.repository.FixedDepositRepository;
+import com.corebanking.fixeddepositservice.util.ClientServiceClient;
 import com.corebanking.fixeddepositservice.util.FixedDepositMapper;
-import com.corebanking.fixeddepositservice.util.LedgerClient;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -25,11 +26,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class FixedDepositService {
 
   private final FixedDepositRepository fixedDepositRepository;
-  private final LedgerClient ledgerClient;
+  private final LedgerPostingService ledgerPostingService;
+  private final ClientServiceClient clientServiceClient;
 
   @Transactional
   public FixedDepositResponse createFixedDeposit(CreateFixedDepositRequest request) {
     log.info("Creating fixed deposit for client ID: {}", request.getClientId());
+
+    clientServiceClient.requireClientExists(request.getClientId());
 
     LocalDate depositDate = LocalDate.now();
     LocalDate maturityDate = depositDate.plusDays(request.getTenureInDays());
@@ -51,9 +55,12 @@ public class FixedDepositService {
     log.info(
         "Fixed deposit created with ID: {} maturing on: {}", savedDeposit.getId(), maturityDate);
 
-    ledgerClient.postFixedDepositCreationEntry(
+    String reference = "FD-" + savedDeposit.getId();
+    ledgerPostingService.record(
+        "FIXED_DEPOSIT_CREATION",
         request.getPrincipalAmount(),
-        "FD-" + savedDeposit.getId() + "-" + System.currentTimeMillis());
+        reference,
+        "Fixed deposit creation - " + reference);
 
     return FixedDepositMapper.toResponse(savedDeposit);
   }
@@ -64,11 +71,19 @@ public class FixedDepositService {
 
     FixedDeposit deposit =
         fixedDepositRepository
-            .findById(depositId)
+            .findByIdForUpdate(depositId)
             .orElseThrow(
                 () ->
                     new FixedDepositNotFoundException(
                         "Fixed deposit not found with ID: " + depositId));
+
+    if (deposit.getStatus() != FixedDepositStatus.ACTIVE) {
+      throw new FixedDepositNotActiveException(
+          "Fixed deposit "
+              + depositId
+              + " cannot be matured. Current status: "
+              + deposit.getStatus());
+    }
 
     if (LocalDate.now().isBefore(deposit.getMaturityDate())) {
       throw new PrematureWithdrawalException(
@@ -84,9 +99,25 @@ public class FixedDepositService {
     FixedDeposit maturedDeposit = fixedDepositRepository.save(deposit);
     log.info("Fixed deposit {} matured successfully", depositId);
 
-    ledgerClient.postFixedDepositMaturityEntry(
-        maturedDeposit.getMaturityAmount(),
-        "FD-MAT-" + depositId + "-" + System.currentTimeMillis());
+    // Principal and interest are posted separately: repaying principal settles
+    // what we owed the customer, while the interest is an expense.
+    String principalReference = "FD-MAT-" + depositId;
+    ledgerPostingService.record(
+        "FIXED_DEPOSIT_MATURITY",
+        maturedDeposit.getPrincipalAmount(),
+        principalReference,
+        "Fixed deposit maturity (principal) - " + principalReference);
+
+    BigDecimal interest =
+        maturedDeposit.getMaturityAmount().subtract(maturedDeposit.getPrincipalAmount());
+    if (interest.compareTo(BigDecimal.ZERO) > 0) {
+      String interestReference = "FD-INT-" + depositId;
+      ledgerPostingService.record(
+          "FIXED_DEPOSIT_INTEREST",
+          interest,
+          interestReference,
+          "Fixed deposit maturity (interest) - " + interestReference);
+    }
 
     return FixedDepositMapper.toResponse(maturedDeposit);
   }

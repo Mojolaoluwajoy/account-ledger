@@ -2,13 +2,27 @@ package com.corebanking.fixeddepositservice.repository;
 
 import com.corebanking.fixeddepositservice.entity.FixedDeposit;
 import com.corebanking.fixeddepositservice.enums.FixedDepositStatus;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public interface FixedDepositRepository extends JpaRepository<FixedDeposit, Long> {
+
+  /*
+   * Loads the deposit with a row lock (SELECT ... FOR UPDATE) so two maturity
+   * requests for the same deposit cannot both pay it out. Must be called
+   * inside a transaction.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select d from FixedDeposit d where d.id = :id")
+  Optional<FixedDeposit> findByIdForUpdate(@Param("id") Long id);
 
   List<FixedDeposit> findByClientId(Long clientId);
 
