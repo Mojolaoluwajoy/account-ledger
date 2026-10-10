@@ -73,7 +73,7 @@ services:
     build: ./api-gateway
     container_name: api-gateway
     ports:
-      - "8087:8080"
+      - "8090:8080"
     environment:
       CLIENT_SERVICE_URL: http://client-service:8081
       SAVINGS_SERVICE_URL: http://savings-service:8082
