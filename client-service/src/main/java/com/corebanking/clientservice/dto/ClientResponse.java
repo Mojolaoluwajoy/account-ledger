@@ -19,5 +19,7 @@ public class ClientResponse {
   private LocalDate dateOfBirth;
 
   private ClientStatus status;
+  private boolean fineractSyncPending;
+  private String fineractSyncError;
   private LocalDateTime createdAt;
 }

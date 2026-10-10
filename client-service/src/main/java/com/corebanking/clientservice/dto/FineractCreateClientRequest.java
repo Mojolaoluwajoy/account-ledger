@@ -15,4 +15,6 @@ public class FineractCreateClientRequest {
   private String dateFormat;
   private String locale;
   private String mobileNo;
+  private String emailAddress;
+  private String externalId;
 }

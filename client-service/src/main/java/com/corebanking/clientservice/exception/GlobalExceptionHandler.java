@@ -28,6 +28,12 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(DuplicatePhoneNumberException.class)
+  public ResponseEntity<ApiResponse<Object>> handleDuplicatePhoneNumber(
+      DuplicatePhoneNumberException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ApiResponse<Object>> handleValidationErrors(
       MethodArgumentNotValidException ex) {
