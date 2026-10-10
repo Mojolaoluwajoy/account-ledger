@@ -20,6 +20,14 @@ public class Client {
 
   @Column private Long fineractClientId;
 
+  /* True while a local change to this client has not yet reached Fineract. */
+  @Column(nullable = false)
+  private boolean fineractSyncPending = false;
+
+  /* Why the last attempt to reach Fineract failed; null once it succeeds. */
+  @Column(length = 500)
+  private String fineractSyncError;
+
   @Column(nullable = false)
   private String firstName;
 
@@ -29,7 +37,7 @@ public class Client {
   @Column(nullable = false, unique = true)
   private String email;
 
-  @Column(nullable = false)
+  @Column(nullable = false, unique = true)
   private String phoneNumber;
 
   private LocalDate dateOfBirth;

@@ -12,7 +12,11 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
   boolean existsByEmail(String email);
 
+  boolean existsByPhoneNumber(String phoneNumber);
+
   Optional<Client> findByEmail(String email);
 
   List<Client> findByStatusAndFineractClientIdIsNull(ClientStatus status);
+
+  List<Client> findByFineractSyncPendingTrueAndFineractClientIdIsNotNull();
 }

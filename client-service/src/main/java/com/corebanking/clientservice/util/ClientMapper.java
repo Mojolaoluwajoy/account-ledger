@@ -29,6 +29,8 @@ public class ClientMapper {
         .status(client.getStatus())
         .createdAt(client.getCreatedAt())
         .fineractClientId(client.getFineractClientId())
+        .fineractSyncPending(client.isFineractSyncPending())
+        .fineractSyncError(client.getFineractSyncError())
         .build();
   }
 
