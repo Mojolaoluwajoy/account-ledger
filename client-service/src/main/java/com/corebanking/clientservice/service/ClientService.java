@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -37,9 +38,43 @@ public class ClientService {
 
     Client client = ClientMapper.toEntity(request);
     client.setStatus(ClientStatus.PENDING);
-    Client savedClient = clientRepository.save(client);
+
+    Client savedClient;
+    try {
+      savedClient = clientRepository.save(client);
+    } catch (DataIntegrityViolationException e) {
+      // Another request registered the same email between our check and the insert.
+      throw new DuplicateEmailException(
+          "Client with email " + request.getEmail() + " already exists");
+    }
     log.info("Client saved to our database with ID: {}", savedClient.getId());
 
+    syncToFineract(savedClient);
+
+    return ClientMapper.toResponse(savedClient);
+  }
+
+  /*
+   * Retries clients that were saved locally but never made it to Fineract
+   * (they are still PENDING with no Fineract ID). Triggered by
+   * FineractSyncScheduler.
+   */
+  public void retryPendingFineractSync() {
+    List<Client> pendingClients =
+        clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING);
+    if (pendingClients.isEmpty()) {
+      return;
+    }
+
+    log.info("Retrying Fineract sync for {} pending client(s)", pendingClients.size());
+    pendingClients.forEach(this::syncToFineract);
+  }
+
+  /*
+   * Creates the client in Fineract and marks it ACTIVE. If Fineract fails the
+   * client stays PENDING so the retry job can pick it up later.
+   */
+  private void syncToFineract(Client client) {
     try {
       String activationDate = LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
 
@@ -47,28 +82,29 @@ public class ClientService {
           FineractCreateClientRequest.builder()
               .officeId(1)
               .legalFormId(1)
-              .firstname(request.getFirstName())
-              .lastname(request.getLastName())
+              .firstname(client.getFirstName())
+              .lastname(client.getLastName())
               .active(true)
               .activationDate(activationDate)
               .dateFormat("dd MMMM yyyy")
               .locale("en")
-              .mobileNo(request.getPhoneNumber())
+              .mobileNo(client.getPhoneNumber())
               .build();
 
       FineractClientResponse fineractResponse = fineractClient.createClient(fineractRequest);
 
-      savedClient.setFineractClientId(fineractResponse.getClientId());
-      savedClient.setStatus(ClientStatus.ACTIVE);
-      clientRepository.save(savedClient);
+      client.setFineractClientId(fineractResponse.getClientId());
+      client.setStatus(ClientStatus.ACTIVE);
+      clientRepository.save(client);
 
-      log.info("Client also created in Fineract with ID: {}", fineractResponse.getClientId());
+      log.info(
+          "Client {} created in Fineract with ID: {}",
+          client.getId(),
+          fineractResponse.getClientId());
 
     } catch (Exception e) {
-      log.error("Failed to create client in Fineract: {}", e.getMessage());
+      log.error("Failed to create client {} in Fineract, will retry later", client.getId(), e);
     }
-
-    return ClientMapper.toResponse(savedClient);
   }
 
   public ClientResponse getClientById(Long id) {

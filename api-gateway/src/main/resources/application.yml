@@ -1,38 +1,46 @@
 server:
   port: 8080
 
+# Where each backend lives. Defaults suit running everything on your machine;
+# docker-compose overrides them with container names.
+services:
+  client: ${CLIENT_SERVICE_URL:http://localhost:8081}
+  savings: ${SAVINGS_SERVICE_URL:http://localhost:8082}
+  fixed-deposit: ${FIXED_DEPOSIT_SERVICE_URL:http://localhost:8083}
+  ledger: ${LEDGER_SERVICE_URL:http://localhost:8084}
+
 spring:
   application:
     name: api-gateway
   cloud:
     gateway:
-      mvc:
-        enabled: true
-        routes:
-          - id: client-service
-            uri: http://localhost:8081
-            predicates:
-              - Path=/api/v1/clients/**
+      server:
+        webmvc:
+          routes:
+            - id: client-service
+              uri: ${services.client}
+              predicates:
+                - Path=/api/v1/clients/**
 
-          - id: savings-products
-            uri: http://localhost:8085
-            predicates:
-              - Path=/api/v1/savings-products/**
+            - id: savings-products
+              uri: ${services.savings}
+              predicates:
+                - Path=/api/v1/savings-products/**
 
-          - id: savings-accounts
-            uri: http://localhost:8082
-            predicates:
-              - Path=/api/v1/savings-accounts/**
+            - id: savings-accounts
+              uri: ${services.savings}
+              predicates:
+                - Path=/api/v1/savings-accounts/**
 
-          - id: fixed-deposits
-            uri: http://localhost:8083
-            predicates:
-              - Path=/api/v1/fixed-deposits/**
+            - id: fixed-deposits
+              uri: ${services.fixed-deposit}
+              predicates:
+                - Path=/api/v1/fixed-deposits/**
 
-          - id: ledger
-            uri: http://localhost:8084
-            predicates:
-              - Path=/api/v1/ledger/**
+            - id: ledger
+              uri: ${services.ledger}
+              predicates:
+                - Path=/api/v1/ledger/**
 
 logging:
   level:

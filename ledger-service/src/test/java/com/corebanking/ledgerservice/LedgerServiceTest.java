@@ -39,7 +39,7 @@ class LedgerServiceTest {
 
   private GlAccount cashAccount;
   private GlAccount savingsControlAccount;
-  private GlAccount fixedDepositAssetAccount;
+  private GlAccount fixedDepositLiabilityAccount;
   private LedgerEntry savedEntry;
   private PostLedgerEntryRequest depositRequest;
   private PostLedgerEntryRequest withdrawalRequest;
@@ -60,11 +60,11 @@ class LedgerServiceTest {
     savingsControlAccount.setAccountName("Savings Control");
     savingsControlAccount.setAccountType(GlAccountType.LIABILITY);
 
-    fixedDepositAssetAccount = new GlAccount();
-    fixedDepositAssetAccount.setId(3L);
-    fixedDepositAssetAccount.setAccountCode("1002");
-    fixedDepositAssetAccount.setAccountName("Fixed Deposit Asset");
-    fixedDepositAssetAccount.setAccountType(GlAccountType.ASSET);
+    fixedDepositLiabilityAccount = new GlAccount();
+    fixedDepositLiabilityAccount.setId(3L);
+    fixedDepositLiabilityAccount.setAccountCode("2002");
+    fixedDepositLiabilityAccount.setAccountName("Fixed Deposit Liability");
+    fixedDepositLiabilityAccount.setAccountType(GlAccountType.LIABILITY);
 
     savedEntry = new LedgerEntry();
     savedEntry.setId(1L);
@@ -133,26 +133,63 @@ class LedgerServiceTest {
   }
 
   @Test
-  void postEntry_fixedDepositCreation_shouldDebitFixedDepositAssetAndCreditCash() {
+  void postEntry_fixedDepositCreation_shouldDebitCashAndCreditFixedDepositLiability() {
     LedgerEntry fdEntry = new LedgerEntry();
     fdEntry.setId(3L);
-    fdEntry.setDebitAccount(fixedDepositAssetAccount);
-    fdEntry.setCreditAccount(cashAccount);
+    fdEntry.setDebitAccount(cashAccount);
+    fdEntry.setCreditAccount(fixedDepositLiabilityAccount);
     fdEntry.setAmount(new BigDecimal("10000.00"));
     fdEntry.setTransactionType(TransactionEntryType.FIXED_DEPOSIT_CREATION);
     fdEntry.setTransactionReference("FD-1-123");
 
-    when(glAccountRepository.findByAccountCode("1002"))
-        .thenReturn(Optional.of(fixedDepositAssetAccount));
     when(glAccountRepository.findByAccountCode("1001")).thenReturn(Optional.of(cashAccount));
+    when(glAccountRepository.findByAccountCode("2002"))
+        .thenReturn(Optional.of(fixedDepositLiabilityAccount));
     when(ledgerEntryRepository.save(any(LedgerEntry.class))).thenReturn(fdEntry);
 
     LedgerEntryResponse response = ledgerService.postEntry(fdCreationRequest);
 
     assertNotNull(response);
-    assertEquals("1002", response.getDebitAccountCode());
-    assertEquals("1001", response.getCreditAccountCode());
+    assertEquals("1001", response.getDebitAccountCode());
+    assertEquals("2002", response.getCreditAccountCode());
     assertEquals(new BigDecimal("10000.00"), response.getAmount());
+  }
+
+  @Test
+  void postEntry_fixedDepositInterest_shouldDebitInterestExpenseAndCreditCash() {
+    GlAccount interestExpenseAccount = new GlAccount();
+    interestExpenseAccount.setId(4L);
+    interestExpenseAccount.setAccountCode("5001");
+    interestExpenseAccount.setAccountName("Interest Expense");
+    interestExpenseAccount.setAccountType(GlAccountType.EXPENSE);
+
+    PostLedgerEntryRequest interestRequest = new PostLedgerEntryRequest();
+    interestRequest.setTransactionType(TransactionEntryType.FIXED_DEPOSIT_INTEREST);
+    interestRequest.setAmount(new BigDecimal("591.78"));
+    interestRequest.setTransactionReference("FD-INT-1");
+
+    when(glAccountRepository.findByAccountCode("5001"))
+        .thenReturn(Optional.of(interestExpenseAccount));
+    when(glAccountRepository.findByAccountCode("1001")).thenReturn(Optional.of(cashAccount));
+    when(ledgerEntryRepository.save(any(LedgerEntry.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    LedgerEntryResponse response = ledgerService.postEntry(interestRequest);
+
+    assertEquals("5001", response.getDebitAccountCode());
+    assertEquals("1001", response.getCreditAccountCode());
+    assertEquals(new BigDecimal("591.78"), response.getAmount());
+  }
+
+  @Test
+  void postEntry_withAlreadyPostedReference_shouldReturnExistingEntryWithoutSavingAgain() {
+    when(ledgerEntryRepository.findFirstByTransactionReference("SAV001-123"))
+        .thenReturn(Optional.of(savedEntry));
+
+    LedgerEntryResponse response = ledgerService.postEntry(depositRequest);
+
+    assertEquals(1L, response.getId());
+    verify(ledgerEntryRepository, never()).save(any(LedgerEntry.class));
   }
 
   @Test

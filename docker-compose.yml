@@ -38,6 +38,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/savings_service_db
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: postgres
+      LEDGER_SERVICE_URL: http://ledger-service:8084
+      CLIENT_SERVICE_URL: http://client-service:8081
     depends_on:
       - postgres
 
@@ -50,6 +52,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fixed_deposit_service_db
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: postgres
+      LEDGER_SERVICE_URL: http://ledger-service:8084
+      CLIENT_SERVICE_URL: http://client-service:8081
     depends_on:
       - postgres
 
@@ -70,6 +74,11 @@ services:
     container_name: api-gateway
     ports:
       - "8087:8080"
+    environment:
+      CLIENT_SERVICE_URL: http://client-service:8081
+      SAVINGS_SERVICE_URL: http://savings-service:8082
+      FIXED_DEPOSIT_SERVICE_URL: http://fixed-deposit-service:8083
+      LEDGER_SERVICE_URL: http://ledger-service:8084
     depends_on:
       - client-service
       - savings-service

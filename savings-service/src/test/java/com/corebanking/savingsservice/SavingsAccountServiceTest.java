@@ -4,6 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -15,13 +19,18 @@ import com.corebanking.savingsservice.dto.TransactionRequest;
 import com.corebanking.savingsservice.dto.TransactionResponse;
 import com.corebanking.savingsservice.entity.SavingsAccount;
 import com.corebanking.savingsservice.entity.SavingsProduct;
+import com.corebanking.savingsservice.entity.SavingsTransaction;
 import com.corebanking.savingsservice.enums.SavingsAccountStatus;
 import com.corebanking.savingsservice.exception.AccountNotFoundException;
+import com.corebanking.savingsservice.exception.ClientNotFoundException;
 import com.corebanking.savingsservice.exception.InsufficientBalanceException;
 import com.corebanking.savingsservice.exception.ProductNotFoundException;
 import com.corebanking.savingsservice.repository.SavingsAccountRepository;
 import com.corebanking.savingsservice.repository.SavingsProductRepository;
+import com.corebanking.savingsservice.repository.SavingsTransactionRepository;
+import com.corebanking.savingsservice.service.LedgerPostingService;
 import com.corebanking.savingsservice.service.SavingsAccountService;
+import com.corebanking.savingsservice.util.ClientServiceClient;
 import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +46,12 @@ class SavingsAccountServiceTest {
   @Mock private SavingsAccountRepository savingsAccountRepository;
 
   @Mock private SavingsProductRepository savingsProductRepository;
+
+  @Mock private SavingsTransactionRepository savingsTransactionRepository;
+
+  @Mock private LedgerPostingService ledgerPostingService;
+
+  @Mock private ClientServiceClient clientServiceClient;
 
   @InjectMocks private SavingsAccountService savingsAccountService;
 
@@ -68,6 +83,10 @@ class SavingsAccountServiceTest {
     openRequest.setClientId(1L);
     openRequest.setProductId(1L);
     openRequest.setInitialDeposit(new BigDecimal("200.00"));
+
+    lenient()
+        .when(savingsTransactionRepository.save(any(SavingsTransaction.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
   }
 
   @Test
@@ -81,6 +100,21 @@ class SavingsAccountServiceTest {
     assertEquals("SAV000000001", response.getAccountNumber());
     assertEquals(SavingsAccountStatus.ACTIVE, response.getStatus());
     verify(savingsAccountRepository, times(1)).save(any(SavingsAccount.class));
+    verify(savingsTransactionRepository, times(1)).save(any(SavingsTransaction.class));
+    verify(ledgerPostingService)
+        .record(eq("SAVINGS_DEPOSIT"), eq(new BigDecimal("200.00")), anyString(), anyString());
+  }
+
+  @Test
+  void openAccount_withUnknownClient_shouldThrowException() {
+    doThrow(new ClientNotFoundException("Client not found with ID: 1"))
+        .when(clientServiceClient)
+        .requireClientExists(1L);
+
+    assertThrows(
+        ClientNotFoundException.class, () -> savingsAccountService.openAccount(openRequest));
+
+    verify(savingsAccountRepository, never()).save(any(SavingsAccount.class));
   }
 
   @Test
@@ -99,13 +133,15 @@ class SavingsAccountServiceTest {
     TransactionRequest request = new TransactionRequest();
     request.setAmount(new BigDecimal("200.00"));
 
-    when(savingsAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
     when(savingsAccountRepository.save(any(SavingsAccount.class))).thenReturn(account);
 
     TransactionResponse response = savingsAccountService.deposit(1L, request);
 
     assertNotNull(response);
     assertEquals(new BigDecimal("700.00"), response.getNewBalance());
+    verify(ledgerPostingService)
+        .record(eq("SAVINGS_DEPOSIT"), eq(new BigDecimal("200.00")), anyString(), anyString());
   }
 
   @Test
@@ -113,7 +149,7 @@ class SavingsAccountServiceTest {
     TransactionRequest request = new TransactionRequest();
     request.setAmount(new BigDecimal("460.00"));
 
-    when(savingsAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
 
     assertThrows(
         InsufficientBalanceException.class, () -> savingsAccountService.withdraw(1L, request));
@@ -122,11 +158,38 @@ class SavingsAccountServiceTest {
   }
 
   @Test
+  void withdraw_moreThanBalance_withoutMinimumBalanceRule_shouldThrowException() {
+    product.setEnforceMinimumBalance(false);
+    TransactionRequest request = new TransactionRequest();
+    request.setAmount(new BigDecimal("500.01"));
+
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+
+    assertThrows(
+        InsufficientBalanceException.class, () -> savingsAccountService.withdraw(1L, request));
+
+    verify(savingsAccountRepository, never()).save(any(SavingsAccount.class));
+  }
+
+  @Test
+  void withdraw_entireBalance_withoutMinimumBalanceRule_shouldLeaveZero() {
+    product.setEnforceMinimumBalance(false);
+    TransactionRequest request = new TransactionRequest();
+    request.setAmount(new BigDecimal("500.00"));
+
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+
+    TransactionResponse response = savingsAccountService.withdraw(1L, request);
+
+    assertEquals(new BigDecimal("0.00"), response.getNewBalance());
+  }
+
+  @Test
   void deposit_withInvalidAccountId_shouldThrowException() {
     TransactionRequest request = new TransactionRequest();
     request.setAmount(new BigDecimal("100.00"));
 
-    when(savingsAccountRepository.findById(99L)).thenReturn(Optional.empty());
+    when(savingsAccountRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
 
     assertThrows(AccountNotFoundException.class, () -> savingsAccountService.deposit(99L, request));
   }
