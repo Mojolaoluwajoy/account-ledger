@@ -12,6 +12,14 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    # Healthy only once init-db.sql has finished: the check connects over TCP
+    # (closed while the image runs its init scripts) to the last database
+    # that script creates.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U root -d ledger_service_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   client-service:
     build: ./client-service
@@ -27,7 +35,9 @@ services:
       FINERACT_USERNAME: mifos
       FINERACT_PASSWORD: password
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    restart: on-failure
 
   savings-service:
     build: ./savings-service
@@ -41,7 +51,9 @@ services:
       LEDGER_SERVICE_URL: http://ledger-service:8084
       CLIENT_SERVICE_URL: http://client-service:8081
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    restart: on-failure
 
   fixed-deposit-service:
     build: ./fixed-deposit-service
@@ -55,7 +67,9 @@ services:
       LEDGER_SERVICE_URL: http://ledger-service:8084
       CLIENT_SERVICE_URL: http://client-service:8081
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    restart: on-failure
 
   ledger-service:
     build: ./ledger-service
@@ -67,7 +81,9 @@ services:
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: postgres
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    restart: on-failure
 
   api-gateway:
     build: ./api-gateway
