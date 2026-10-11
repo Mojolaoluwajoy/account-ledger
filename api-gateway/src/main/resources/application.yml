@@ -42,6 +42,50 @@ spring:
               predicates:
                 - Path=/api/v1/ledger/**
 
+            # API descriptions of each service, shown together in the
+            # gateway's Swagger UI (see springdoc below).
+            - id: client-service-docs
+              uri: ${services.client}
+              predicates:
+                - Path=/docs/client-service
+              filters:
+                - SetPath=/v3/api-docs
+
+            - id: savings-service-docs
+              uri: ${services.savings}
+              predicates:
+                - Path=/docs/savings-service
+              filters:
+                - SetPath=/v3/api-docs
+
+            - id: fixed-deposit-service-docs
+              uri: ${services.fixed-deposit}
+              predicates:
+                - Path=/docs/fixed-deposit-service
+              filters:
+                - SetPath=/v3/api-docs
+
+            - id: ledger-service-docs
+              uri: ${services.ledger}
+              predicates:
+                - Path=/docs/ledger-service
+              filters:
+                - SetPath=/v3/api-docs
+
+# One Swagger UI for every service: http://<gateway>/swagger-ui.html
+# Pick a service from the dropdown at the top right.
+springdoc:
+  swagger-ui:
+    urls:
+      - name: Client Service
+        url: /docs/client-service
+      - name: Savings Service
+        url: /docs/savings-service
+      - name: Fixed Deposit Service
+        url: /docs/fixed-deposit-service
+      - name: Ledger Service
+        url: /docs/ledger-service
+
 logging:
   level:
     org.springframework.cloud.gateway: DEBUG
