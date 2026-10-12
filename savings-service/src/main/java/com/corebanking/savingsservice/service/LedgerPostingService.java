@@ -4,6 +4,7 @@ import com.corebanking.savingsservice.entity.LedgerPosting;
 import com.corebanking.savingsservice.enums.LedgerPostingStatus;
 import com.corebanking.savingsservice.repository.LedgerPostingRepository;
 import com.corebanking.savingsservice.util.LedgerClient;
+import feign.FeignException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,10 @@ public class LedgerPostingService {
    * Sends pending postings to the ledger service. A posting stays PENDING and
    * is retried on the next run if the ledger service fails; the ledger ignores
    * a reference it has already posted, so retrying is safe.
+   *
+   * A posting the ledger service rejects as invalid (a 4xx answer) would be
+   * rejected again every time, so it is marked FAILED and left for someone to
+   * look at instead of being retried forever ahead of newer postings.
    */
   @Scheduled(fixedDelayString = "${ledger.posting.retry-delay-ms:5000}")
   public void publishPending() {
@@ -53,6 +58,14 @@ public class LedgerPostingService {
         posting.setPostedAt(LocalDateTime.now());
         posting.setLastError(null);
         log.info("Ledger entry posted for reference: {}", posting.getTransactionReference());
+      } catch (FeignException.FeignClientException e) {
+        posting.setStatus(LedgerPostingStatus.FAILED);
+        posting.setAttempts(posting.getAttempts() + 1);
+        posting.setLastError(truncate(e.getMessage()));
+        log.error(
+            "Ledger posting {} was rejected by the ledger service and will not be retried: {}",
+            posting.getTransactionReference(),
+            e.getMessage());
       } catch (Exception e) {
         posting.setAttempts(posting.getAttempts() + 1);
         posting.setLastError(truncate(e.getMessage()));
