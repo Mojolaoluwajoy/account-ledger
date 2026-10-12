@@ -33,7 +33,7 @@ public class FixedDepositService {
   public FixedDepositResponse createFixedDeposit(CreateFixedDepositRequest request) {
     log.info("Creating fixed deposit for client ID: {}", request.getClientId());
 
-    clientServiceClient.requireClientExists(request.getClientId());
+    clientServiceClient.requireActiveClient(request.getClientId());
 
     LocalDate depositDate = LocalDate.now();
     LocalDate maturityDate = depositDate.plusDays(request.getTenureInDays());

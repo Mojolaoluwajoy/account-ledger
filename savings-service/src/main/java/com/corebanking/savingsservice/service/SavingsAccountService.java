@@ -49,7 +49,7 @@ public class SavingsAccountService {
   public SavingsAccountResponse openAccount(OpenSavingsAccountRequest request) {
     log.info("Opening savings account for client ID: {}", request.getClientId());
 
-    clientServiceClient.requireClientExists(request.getClientId());
+    clientServiceClient.requireActiveClient(request.getClientId());
 
     SavingsProduct product =
         savingsProductRepository
