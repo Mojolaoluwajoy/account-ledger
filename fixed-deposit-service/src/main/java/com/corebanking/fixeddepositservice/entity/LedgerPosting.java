@@ -13,7 +13,9 @@ import lombok.NoArgsConstructor;
  *
  * It is saved in the same database transaction as the business change it
  * belongs to, so the two can never disagree. A background job then sends it
- * to the ledger service and keeps retrying until it is accepted.
+ * to the ledger service and keeps retrying until it is accepted. If the
+ * ledger service rejects it outright it is marked FAILED instead, with the
+ * reason in lastError.
  */
 @Data
 @NoArgsConstructor

@@ -11,8 +11,12 @@ import com.corebanking.fixeddepositservice.enums.LedgerPostingStatus;
 import com.corebanking.fixeddepositservice.repository.LedgerPostingRepository;
 import com.corebanking.fixeddepositservice.service.LedgerPostingService;
 import com.corebanking.fixeddepositservice.util.LedgerClient;
+import feign.FeignException;
+import feign.Request;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -61,6 +65,28 @@ class LedgerPostingServiceTest {
     assertEquals(LedgerPostingStatus.PENDING, posting.getStatus());
     assertEquals(1, posting.getAttempts());
     assertEquals("ledger down", posting.getLastError());
+    verify(ledgerPostingRepository).save(posting);
+  }
+
+  @Test
+  void publishPending_whenLedgerRejects_shouldMarkFailedAndNotRetry() {
+    Request request =
+        Request.create(
+            Request.HttpMethod.POST,
+            "http://localhost:8084/api/v1/ledger/entries",
+            Map.of(),
+            null,
+            StandardCharsets.UTF_8,
+            null);
+    doThrow(new FeignException.BadRequest("Validation failed", request, null, Map.of()))
+        .when(ledgerClient)
+        .post(posting);
+
+    ledgerPostingService.publishPending();
+
+    assertEquals(LedgerPostingStatus.FAILED, posting.getStatus());
+    assertEquals(1, posting.getAttempts());
+    assertEquals("Validation failed", posting.getLastError());
     verify(ledgerPostingRepository).save(posting);
   }
 }
