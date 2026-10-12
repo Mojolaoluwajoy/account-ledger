@@ -50,6 +50,11 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(ClientNotActiveException.class)
+  public ResponseEntity<ApiResponse<Object>> handleClientNotActive(ClientNotActiveException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(ClientServiceUnavailableException.class)
   public ResponseEntity<ApiResponse<Object>> handleClientServiceUnavailable(
       ClientServiceUnavailableException ex) {

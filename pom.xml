@@ -27,7 +27,6 @@
         <module>fixed-deposit-service</module>
         <module>ledger-service</module>
         <module>api-gateway</module>
-        <module>fineract-integration-service</module>
     </modules>
 
     <build>

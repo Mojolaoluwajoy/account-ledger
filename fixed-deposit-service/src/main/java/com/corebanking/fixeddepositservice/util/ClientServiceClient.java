@@ -1,5 +1,7 @@
 package com.corebanking.fixeddepositservice.util;
 
+import com.corebanking.fixeddepositservice.dto.ClientLookupResponse;
+import com.corebanking.fixeddepositservice.exception.ClientNotActiveException;
 import com.corebanking.fixeddepositservice.exception.ClientNotFoundException;
 import com.corebanking.fixeddepositservice.exception.ClientServiceUnavailableException;
 import com.corebanking.fixeddepositservice.feign.ClientServiceApi;
@@ -15,15 +17,34 @@ public class ClientServiceClient {
 
   private final ClientServiceApi clientServiceApi;
 
-  public void requireClientExists(Long clientId) {
+  private static final String ACTIVE = "ACTIVE";
+
+  /*
+   * Only an ACTIVE client may be given a new product. A client stays PENDING
+   * until it has been created in Fineract.
+   */
+  public void requireActiveClient(Long clientId) {
+    ClientLookupResponse response;
     try {
-      clientServiceApi.getClientById(clientId);
+      response = clientServiceApi.getClientById(clientId);
     } catch (FeignException.NotFound e) {
       throw new ClientNotFoundException("Client not found with ID: " + clientId);
     } catch (FeignException e) {
       log.error("Could not verify client {} with client service", clientId, e);
       throw new ClientServiceUnavailableException(
           "Could not verify client " + clientId + " right now. Please try again shortly.");
+    }
+
+    String status =
+        response == null || response.getData() == null ? null : response.getData().getStatus();
+    if (status == null) {
+      log.error("Client service answered for client {} without a status", clientId);
+      throw new ClientServiceUnavailableException(
+          "Could not verify client " + clientId + " right now. Please try again shortly.");
+    }
+    if (!ACTIVE.equals(status)) {
+      throw new ClientNotActiveException(
+          "Client " + clientId + " is not active. Current status: " + status);
     }
   }
 }

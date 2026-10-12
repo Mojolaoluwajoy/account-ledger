@@ -3,7 +3,10 @@ package com.corebanking.savingsservice;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 
+import com.corebanking.savingsservice.dto.ClientLookupResponse;
+import com.corebanking.savingsservice.exception.ClientNotActiveException;
 import com.corebanking.savingsservice.exception.ClientNotFoundException;
 import com.corebanking.savingsservice.exception.ClientServiceUnavailableException;
 import com.corebanking.savingsservice.feign.ClientServiceApi;
@@ -36,31 +39,48 @@ class ClientServiceClientTest {
   @InjectMocks private ClientServiceClient clientServiceClient;
 
   @Test
-  void requireClientExists_withExistingClient_shouldPass() {
-    assertDoesNotThrow(() -> clientServiceClient.requireClientExists(1L));
+  void requireActiveClient_withActiveClient_shouldPass() {
+    when(clientServiceApi.getClientById(1L)).thenReturn(clientWithStatus("ACTIVE"));
+
+    assertDoesNotThrow(() -> clientServiceClient.requireActiveClient(1L));
   }
 
   @Test
-  void requireClientExists_withUnknownClient_shouldThrowClientNotFound() {
+  void requireActiveClient_withPendingClient_shouldThrowClientNotActive() {
+    when(clientServiceApi.getClientById(1L)).thenReturn(clientWithStatus("PENDING"));
+
+    assertThrows(ClientNotActiveException.class, () -> clientServiceClient.requireActiveClient(1L));
+  }
+
+  @Test
+  void requireActiveClient_withNoStatusInAnswer_shouldThrowUnavailable() {
+    when(clientServiceApi.getClientById(1L)).thenReturn(new ClientLookupResponse());
+
+    assertThrows(
+        ClientServiceUnavailableException.class, () -> clientServiceClient.requireActiveClient(1L));
+  }
+
+  @Test
+  void requireActiveClient_withUnknownClient_shouldThrowClientNotFound() {
     doThrow(new FeignException.NotFound("Not Found", REQUEST, null, Map.of()))
         .when(clientServiceApi)
         .getClientById(1L);
 
-    assertThrows(ClientNotFoundException.class, () -> clientServiceClient.requireClientExists(1L));
+    assertThrows(ClientNotFoundException.class, () -> clientServiceClient.requireActiveClient(1L));
   }
 
   @Test
-  void requireClientExists_withServerError_shouldThrowUnavailable() {
+  void requireActiveClient_withServerError_shouldThrowUnavailable() {
     doThrow(new FeignException.InternalServerError("Server Error", REQUEST, null, Map.of()))
         .when(clientServiceApi)
         .getClientById(1L);
 
     assertThrows(
-        ClientServiceUnavailableException.class, () -> clientServiceClient.requireClientExists(1L));
+        ClientServiceUnavailableException.class, () -> clientServiceClient.requireActiveClient(1L));
   }
 
   @Test
-  void requireClientExists_withUnreachableService_shouldThrowUnavailable() {
+  void requireActiveClient_withUnreachableService_shouldThrowUnavailable() {
     doThrow(
             new RetryableException(
                 -1, "Connection refused", Request.HttpMethod.GET, (Long) null, REQUEST))
@@ -68,6 +88,15 @@ class ClientServiceClientTest {
         .getClientById(1L);
 
     assertThrows(
-        ClientServiceUnavailableException.class, () -> clientServiceClient.requireClientExists(1L));
+        ClientServiceUnavailableException.class, () -> clientServiceClient.requireActiveClient(1L));
+  }
+
+  private ClientLookupResponse clientWithStatus(String status) {
+    ClientLookupResponse.Client client = new ClientLookupResponse.Client();
+    client.setId(1L);
+    client.setStatus(status);
+    ClientLookupResponse response = new ClientLookupResponse();
+    response.setData(client);
+    return response;
   }
 }

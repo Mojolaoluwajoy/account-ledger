@@ -109,7 +109,7 @@ class SavingsAccountServiceTest {
   void openAccount_withUnknownClient_shouldThrowException() {
     doThrow(new ClientNotFoundException("Client not found with ID: 1"))
         .when(clientServiceClient)
-        .requireClientExists(1L);
+        .requireActiveClient(1L);
 
     assertThrows(
         ClientNotFoundException.class, () -> savingsAccountService.openAccount(openRequest));
