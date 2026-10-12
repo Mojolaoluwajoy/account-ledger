@@ -30,7 +30,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/client_service_db
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: postgres
-      FINERACT_BASE_URL: https://apis.mifos.community/fineract-provider/api/v1
+      FINERACT_BASE_URL: https://sandbox.mifos.community/fineract-provider/api/v1
       FINERACT_TENANT_ID: default
       FINERACT_USERNAME: mifos
       FINERACT_PASSWORD: password
