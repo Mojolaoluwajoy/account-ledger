@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -15,13 +16,16 @@ import com.corebanking.fixeddepositservice.dto.CreateFixedDepositRequest;
 import com.corebanking.fixeddepositservice.dto.FixedDepositResponse;
 import com.corebanking.fixeddepositservice.entity.FixedDeposit;
 import com.corebanking.fixeddepositservice.enums.FixedDepositStatus;
+import com.corebanking.fixeddepositservice.enums.PayoutStatus;
 import com.corebanking.fixeddepositservice.exception.FixedDepositNotActiveException;
 import com.corebanking.fixeddepositservice.exception.FixedDepositNotFoundException;
+import com.corebanking.fixeddepositservice.exception.InvalidPayoutAccountException;
 import com.corebanking.fixeddepositservice.exception.PrematureWithdrawalException;
 import com.corebanking.fixeddepositservice.repository.FixedDepositRepository;
 import com.corebanking.fixeddepositservice.service.FixedDepositService;
 import com.corebanking.fixeddepositservice.service.LedgerPostingService;
 import com.corebanking.fixeddepositservice.util.ClientServiceClient;
+import com.corebanking.fixeddepositservice.util.SavingsServiceClient;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -41,6 +45,8 @@ class FixedDepositServiceTest {
 
   @Mock private ClientServiceClient clientServiceClient;
 
+  @Mock private SavingsServiceClient savingsServiceClient;
+
   @InjectMocks private FixedDepositService fixedDepositService;
 
   private CreateFixedDepositRequest validRequest;
@@ -53,6 +59,7 @@ class FixedDepositServiceTest {
     validRequest.setPrincipalAmount(new BigDecimal("10000.00"));
     validRequest.setInterestRate(new BigDecimal("12.00"));
     validRequest.setTenureInDays(180);
+    validRequest.setPayoutAccountId(5L);
 
     savedDeposit = new FixedDeposit();
     savedDeposit.setId(1L);
@@ -77,9 +84,39 @@ class FixedDepositServiceTest {
     assertNotNull(response.getMaturityDate());
     assertNotNull(response.getMaturityAmount());
     verify(fixedDepositRepository, times(1)).save(any(FixedDeposit.class));
+    verify(savingsServiceClient).requirePayoutAccount(5L, 1L);
     verify(ledgerPostingService)
         .record(
             eq("FIXED_DEPOSIT_CREATION"), eq(new BigDecimal("10000.00")), eq("FD-1"), anyString());
+  }
+
+  @Test
+  void createFixedDeposit_withInvalidPayoutAccount_shouldThrowExceptionAndSaveNothing() {
+    doThrow(new InvalidPayoutAccountException("Payout account 5 does not belong to client 1"))
+        .when(savingsServiceClient)
+        .requirePayoutAccount(5L, 1L);
+
+    assertThrows(
+        InvalidPayoutAccountException.class,
+        () -> fixedDepositService.createFixedDeposit(validRequest));
+
+    verify(fixedDepositRepository, never()).save(any(FixedDeposit.class));
+    verify(ledgerPostingService, never()).record(anyString(), any(), anyString(), anyString());
+  }
+
+  @Test
+  void matureDeposit_withPayoutAccount_shouldQueuePayoutAndLeaveLedgerToSavings() {
+    savedDeposit.setMaturityDate(LocalDate.now().minusDays(1));
+    savedDeposit.setPayoutAccountId(5L);
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
+    when(fixedDepositRepository.save(any(FixedDeposit.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    FixedDepositResponse response = fixedDepositService.matureDeposit(1L);
+
+    assertEquals(FixedDepositStatus.MATURED, response.getStatus());
+    assertEquals(PayoutStatus.PENDING, response.getPayoutStatus());
+    verify(ledgerPostingService, never()).record(anyString(), any(), anyString(), anyString());
   }
 
   @Test
@@ -99,7 +136,7 @@ class FixedDepositServiceTest {
   }
 
   @Test
-  void matureDeposit_onMaturityDate_shouldReturnMaturedResponse() {
+  void matureDeposit_withoutPayoutAccount_shouldPayOutInCash() {
     savedDeposit.setMaturityDate(LocalDate.now().minusDays(1));
     savedDeposit.setStatus(FixedDepositStatus.ACTIVE);
 

@@ -84,6 +84,40 @@ public class SavingsAccountController {
   }
 
   @Operation(
+      summary = "Transfer money to another savings account",
+      description =
+          "Moves the specified amount from this savings account to another one. "
+              + "Blocked if it would breach the minimum balance of this account.")
+  @PostMapping("/{accountId}/transfer")
+  public ResponseEntity<ApiResponse<TransferResponse>> transfer(
+      @PathVariable Long accountId, @Valid @RequestBody TransferRequest request) {
+    log.info(
+        "Request received to transfer {} from account ID: {} to account ID: {}",
+        request.getAmount(),
+        accountId,
+        request.getDestinationAccountId());
+    TransferResponse response = savingsAccountService.transfer(accountId, request);
+    return ResponseEntity.ok(ApiResponse.success("Transfer successful", response));
+  }
+
+  @Operation(
+      summary = "Pay a matured fixed deposit into a savings account",
+      description =
+          "Called by the fixed deposit service. Credits principal and interest in one "
+              + "transaction. Sending the same reference again changes nothing.")
+  @PostMapping("/{accountId}/fixed-deposit-payouts")
+  public ResponseEntity<ApiResponse<TransactionResponse>> creditFixedDepositPayout(
+      @PathVariable Long accountId, @Valid @RequestBody FixedDepositPayoutRequest request) {
+    log.info(
+        "Request received to pay fixed deposit {} into account ID: {}",
+        request.getReference(),
+        accountId);
+    TransactionResponse response =
+        savingsAccountService.creditFixedDepositPayout(accountId, request);
+    return ResponseEntity.ok(ApiResponse.success("Fixed deposit payout credited", response));
+  }
+
+  @Operation(
       summary = "Get transaction history for a savings account",
       description =
           "Returns full transaction history ordered by most recent first. "

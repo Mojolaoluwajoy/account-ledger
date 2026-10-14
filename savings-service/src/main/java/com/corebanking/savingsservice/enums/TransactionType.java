@@ -2,5 +2,8 @@ package com.corebanking.savingsservice.enums;
 
 public enum TransactionType {
   WITHDRAWAL,
-  DEPOSIT
+  DEPOSIT,
+  TRANSFER_OUT,
+  TRANSFER_IN,
+  FIXED_DEPOSIT_PAYOUT
 }

@@ -4,12 +4,14 @@ import com.corebanking.fixeddepositservice.dto.CreateFixedDepositRequest;
 import com.corebanking.fixeddepositservice.dto.FixedDepositResponse;
 import com.corebanking.fixeddepositservice.entity.FixedDeposit;
 import com.corebanking.fixeddepositservice.enums.FixedDepositStatus;
+import com.corebanking.fixeddepositservice.enums.PayoutStatus;
 import com.corebanking.fixeddepositservice.exception.FixedDepositNotActiveException;
 import com.corebanking.fixeddepositservice.exception.FixedDepositNotFoundException;
 import com.corebanking.fixeddepositservice.exception.PrematureWithdrawalException;
 import com.corebanking.fixeddepositservice.repository.FixedDepositRepository;
 import com.corebanking.fixeddepositservice.util.ClientServiceClient;
 import com.corebanking.fixeddepositservice.util.FixedDepositMapper;
+import com.corebanking.fixeddepositservice.util.SavingsServiceClient;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -28,12 +30,14 @@ public class FixedDepositService {
   private final FixedDepositRepository fixedDepositRepository;
   private final LedgerPostingService ledgerPostingService;
   private final ClientServiceClient clientServiceClient;
+  private final SavingsServiceClient savingsServiceClient;
 
   @Transactional
   public FixedDepositResponse createFixedDeposit(CreateFixedDepositRequest request) {
     log.info("Creating fixed deposit for client ID: {}", request.getClientId());
 
     clientServiceClient.requireActiveClient(request.getClientId());
+    savingsServiceClient.requirePayoutAccount(request.getPayoutAccountId(), request.getClientId());
 
     LocalDate depositDate = LocalDate.now();
     LocalDate maturityDate = depositDate.plusDays(request.getTenureInDays());
@@ -50,6 +54,7 @@ public class FixedDepositService {
     deposit.setMaturityDate(maturityDate);
     deposit.setMaturityAmount(maturityAmount);
     deposit.setStatus(FixedDepositStatus.ACTIVE);
+    deposit.setPayoutAccountId(request.getPayoutAccountId());
 
     FixedDeposit savedDeposit = fixedDepositRepository.save(deposit);
     log.info(
@@ -96,8 +101,24 @@ public class FixedDepositService {
     }
 
     deposit.setStatus(FixedDepositStatus.MATURED);
+
+    // The money goes into the payout account. FixedDepositPayoutService sends
+    // it shortly after this commits, and the savings service posts the ledger
+    // entries when it credits the account.
+    if (deposit.getPayoutAccountId() != null) {
+      deposit.setPayoutStatus(PayoutStatus.PENDING);
+      FixedDeposit maturedDeposit = fixedDepositRepository.save(deposit);
+      log.info(
+          "Fixed deposit {} matured, paying into savings account {}",
+          depositId,
+          deposit.getPayoutAccountId());
+      return FixedDepositMapper.toResponse(maturedDeposit);
+    }
+
+    // Deposits created before payouts existed have no payout account and are
+    // paid out in cash, as they always were.
     FixedDeposit maturedDeposit = fixedDepositRepository.save(deposit);
-    log.info("Fixed deposit {} matured successfully", depositId);
+    log.info("Fixed deposit {} matured and paid out in cash", depositId);
 
     // Principal and interest are posted separately: repaying principal settles
     // what we owed the customer, while the interest is an expense.

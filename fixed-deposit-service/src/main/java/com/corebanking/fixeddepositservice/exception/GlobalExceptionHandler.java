@@ -62,6 +62,19 @@ public class GlobalExceptionHandler {
         .body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(InvalidPayoutAccountException.class)
+  public ResponseEntity<ApiResponse<Object>> handleInvalidPayoutAccount(
+      InvalidPayoutAccountException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  @ExceptionHandler(SavingsServiceUnavailableException.class)
+  public ResponseEntity<ApiResponse<Object>> handleSavingsServiceUnavailable(
+      SavingsServiceUnavailableException ex) {
+    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+        .body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(FixedDepositNotActiveException.class)
   public ResponseEntity<ApiResponse<Object>> handleDepositNotActive(
       FixedDepositNotActiveException ex) {

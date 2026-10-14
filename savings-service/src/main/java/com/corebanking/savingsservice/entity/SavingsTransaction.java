@@ -42,6 +42,13 @@ public class SavingsTransaction {
 
   private String description;
 
+  /*
+   * Set when the money came from another service (a fixed deposit payout). It
+   * is unique, so the same payout can never be credited twice.
+   */
+  @Column(unique = true)
+  private String reference;
+
   @Column(nullable = false, updatable = false)
   private LocalDateTime transactionDate = LocalDateTime.now();
 }

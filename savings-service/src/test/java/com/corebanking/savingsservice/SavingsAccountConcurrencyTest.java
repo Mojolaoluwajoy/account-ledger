@@ -3,6 +3,7 @@ package com.corebanking.savingsservice;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.corebanking.savingsservice.dto.TransactionRequest;
+import com.corebanking.savingsservice.dto.TransferRequest;
 import com.corebanking.savingsservice.entity.SavingsAccount;
 import com.corebanking.savingsservice.entity.SavingsProduct;
 import com.corebanking.savingsservice.enums.SavingsAccountStatus;
@@ -21,6 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +43,7 @@ class SavingsAccountConcurrencyTest {
   @MockitoBean private LedgerClient ledgerClient;
 
   private Long accountId;
+  private Long otherAccountId;
 
   @BeforeEach
   void setUp() {
@@ -61,6 +64,15 @@ class SavingsAccountConcurrencyTest {
     account.setAvailableBalance(new BigDecimal("100.00"));
     account.setStatus(SavingsAccountStatus.ACTIVE);
     accountId = savingsAccountRepository.save(account).getId();
+
+    SavingsAccount other = new SavingsAccount();
+    other.setClientId(2L);
+    other.setProduct(product);
+    other.setAccountNumber("SAVCONC" + System.nanoTime());
+    other.setBalance(new BigDecimal("100.00"));
+    other.setAvailableBalance(new BigDecimal("100.00"));
+    other.setStatus(SavingsAccountStatus.ACTIVE);
+    otherAccountId = savingsAccountRepository.save(other).getId();
   }
 
   @AfterEach
@@ -85,6 +97,25 @@ class SavingsAccountConcurrencyTest {
     // 100.00 covers exactly three withdrawals of 30.00; the other five must be rejected.
     assertEquals(THREADS - 3, rejected);
     assertEquals(0, new BigDecimal("10.00").compareTo(currentBalance()));
+  }
+
+  @Test
+  void concurrentTransfersInBothDirections_shouldNotDeadlockOrLoseMoney() throws Exception {
+    AtomicInteger calls = new AtomicInteger();
+
+    // Half the transfers go one way and half the other, all at once.
+    int rejected =
+        runConcurrently(
+            () ->
+                calls.getAndIncrement() % 2 == 0
+                    ? savingsAccountService.transfer(accountId, transferTo(otherAccountId, "10.00"))
+                    : savingsAccountService.transfer(
+                        otherAccountId, transferTo(accountId, "10.00")));
+
+    assertEquals(0, rejected);
+    assertEquals(0, new BigDecimal("100.00").compareTo(currentBalance()));
+    assertEquals(0, new BigDecimal("100.00").compareTo(balanceOf(otherAccountId)));
+    assertEquals(THREADS * 2L, savingsTransactionRepository.count());
   }
 
   /* Starts all calls at the same moment and returns how many were rejected for low balance. */
@@ -121,7 +152,18 @@ class SavingsAccountConcurrencyTest {
   }
 
   private BigDecimal currentBalance() {
-    return savingsAccountRepository.findById(accountId).orElseThrow().getBalance();
+    return balanceOf(accountId);
+  }
+
+  private BigDecimal balanceOf(Long id) {
+    return savingsAccountRepository.findById(id).orElseThrow().getBalance();
+  }
+
+  private TransferRequest transferTo(Long destinationAccountId, String value) {
+    TransferRequest request = new TransferRequest();
+    request.setDestinationAccountId(destinationAccountId);
+    request.setAmount(new BigDecimal(value));
+    return request;
   }
 
   private TransactionRequest amount(String value) {

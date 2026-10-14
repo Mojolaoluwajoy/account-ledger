@@ -2,6 +2,7 @@ package com.corebanking.fixeddepositservice.repository;
 
 import com.corebanking.fixeddepositservice.entity.FixedDeposit;
 import com.corebanking.fixeddepositservice.enums.FixedDepositStatus;
+import com.corebanking.fixeddepositservice.enums.PayoutStatus;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.List;
@@ -25,6 +26,8 @@ public interface FixedDepositRepository extends JpaRepository<FixedDeposit, Long
   Optional<FixedDeposit> findByIdForUpdate(@Param("id") Long id);
 
   List<FixedDeposit> findByClientId(Long clientId);
+
+  List<FixedDeposit> findTop50ByPayoutStatusOrderByIdAsc(PayoutStatus payoutStatus);
 
   List<FixedDeposit> findByStatus(FixedDepositStatus status);
 

@@ -1,6 +1,7 @@
 package com.corebanking.fixeddepositservice.dto;
 
 import com.corebanking.fixeddepositservice.enums.FixedDepositStatus;
+import com.corebanking.fixeddepositservice.enums.PayoutStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -21,4 +22,8 @@ public class FixedDepositResponse {
   private BigDecimal maturityAmount;
   private FixedDepositStatus status;
   private LocalDateTime createdAt;
+  private Long payoutAccountId;
+  private PayoutStatus payoutStatus;
+  private String payoutError;
+  private LocalDateTime paidOutAt;
 }

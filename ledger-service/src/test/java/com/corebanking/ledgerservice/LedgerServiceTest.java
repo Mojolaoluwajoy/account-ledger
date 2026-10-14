@@ -182,6 +182,52 @@ class LedgerServiceTest {
   }
 
   @Test
+  void postEntry_fixedDepositPayout_shouldDebitFixedDepositLiabilityAndCreditSavings() {
+    LedgerEntryResponse response =
+        postPayoutEntry(TransactionEntryType.FIXED_DEPOSIT_PAYOUT, "2002", "FD-PAYOUT-1");
+
+    assertEquals("2002", response.getDebitAccountCode());
+    assertEquals("2001", response.getCreditAccountCode());
+  }
+
+  @Test
+  void postEntry_fixedDepositInterestPayout_shouldDebitInterestExpenseAndCreditSavings() {
+    LedgerEntryResponse response =
+        postPayoutEntry(
+            TransactionEntryType.FIXED_DEPOSIT_INTEREST_PAYOUT, "5001", "FD-PAYOUT-1-INT");
+
+    assertEquals("5001", response.getDebitAccountCode());
+    assertEquals("2001", response.getCreditAccountCode());
+  }
+
+  private LedgerEntryResponse postPayoutEntry(
+      TransactionEntryType type, String debitCode, String reference) {
+    GlAccount debitAccount = new GlAccount();
+    debitAccount.setId(10L);
+    debitAccount.setAccountCode(debitCode);
+    debitAccount.setAccountName("Debit side");
+    debitAccount.setAccountType(GlAccountType.LIABILITY);
+
+    GlAccount savingsAccount = new GlAccount();
+    savingsAccount.setId(11L);
+    savingsAccount.setAccountCode("2001");
+    savingsAccount.setAccountName("Savings Control");
+    savingsAccount.setAccountType(GlAccountType.LIABILITY);
+
+    PostLedgerEntryRequest request = new PostLedgerEntryRequest();
+    request.setTransactionType(type);
+    request.setAmount(new BigDecimal("100.00"));
+    request.setTransactionReference(reference);
+
+    when(glAccountRepository.findByAccountCode(debitCode)).thenReturn(Optional.of(debitAccount));
+    when(glAccountRepository.findByAccountCode("2001")).thenReturn(Optional.of(savingsAccount));
+    when(ledgerEntryRepository.save(any(LedgerEntry.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    return ledgerService.postEntry(request);
+  }
+
+  @Test
   void postEntry_withAlreadyPostedReference_shouldReturnExistingEntryWithoutSavingAgain() {
     when(ledgerEntryRepository.findFirstByTransactionReference("SAV001-123"))
         .thenReturn(Optional.of(savedEntry));
