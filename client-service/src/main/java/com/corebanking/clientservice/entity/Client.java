@@ -48,4 +48,12 @@ public class Client {
 
   @Column(nullable = false, updatable = false)
   private LocalDateTime createdAt = LocalDateTime.now();
+
+  /*
+   * Bumped by Hibernate on every save. A save based on an older copy of the
+   * client fails instead of silently overwriting the newer change.
+   */
+  @Version
+  @Column(nullable = false)
+  private Long version;
 }

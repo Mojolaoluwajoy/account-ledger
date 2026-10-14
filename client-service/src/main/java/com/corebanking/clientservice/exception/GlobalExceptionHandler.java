@@ -4,6 +4,7 @@ import com.corebanking.clientservice.dto.ApiResponse;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -32,6 +33,22 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiResponse<Object>> handleDuplicatePhoneNumber(
       DuplicatePhoneNumberException ex) {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  @ExceptionHandler(ClientChangedException.class)
+  public ResponseEntity<ApiResponse<Object>> handleClientChanged(ClientChangedException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  /* Two saves of the same client raced and this one lost. */
+  @ExceptionHandler(OptimisticLockingFailureException.class)
+  public ResponseEntity<ApiResponse<Object>> handleConcurrentUpdate(
+      OptimisticLockingFailureException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            ApiResponse.error(
+                "The client was changed by another request at the same time. "
+                    + "Reload it and try again."));
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)

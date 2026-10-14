@@ -22,4 +22,7 @@ public class ClientResponse {
   private boolean fineractSyncPending;
   private String fineractSyncError;
   private LocalDateTime createdAt;
+
+  /* Send this back when updating the client to be told if someone changed it meanwhile. */
+  private Long version;
 }
