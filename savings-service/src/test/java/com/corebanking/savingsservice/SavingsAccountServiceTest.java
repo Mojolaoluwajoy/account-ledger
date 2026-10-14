@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.corebanking.savingsservice.dto.FixedDepositPayoutRequest;
 import com.corebanking.savingsservice.dto.OpenSavingsAccountRequest;
 import com.corebanking.savingsservice.dto.SavingsAccountResponse;
 import com.corebanking.savingsservice.dto.TransactionRequest;
@@ -24,11 +25,13 @@ import com.corebanking.savingsservice.entity.SavingsAccount;
 import com.corebanking.savingsservice.entity.SavingsProduct;
 import com.corebanking.savingsservice.entity.SavingsTransaction;
 import com.corebanking.savingsservice.enums.SavingsAccountStatus;
+import com.corebanking.savingsservice.enums.TransactionType;
 import com.corebanking.savingsservice.exception.AccountNotActiveException;
 import com.corebanking.savingsservice.exception.AccountNotFoundException;
 import com.corebanking.savingsservice.exception.ClientNotFoundException;
 import com.corebanking.savingsservice.exception.InsufficientBalanceException;
 import com.corebanking.savingsservice.exception.InvalidTransferException;
+import com.corebanking.savingsservice.exception.PayoutReferenceConflictException;
 import com.corebanking.savingsservice.exception.ProductNotFoundException;
 import com.corebanking.savingsservice.repository.SavingsAccountRepository;
 import com.corebanking.savingsservice.repository.SavingsProductRepository;
@@ -278,6 +281,89 @@ class SavingsAccountServiceTest {
     TransferRequest request = new TransferRequest();
     request.setAmount(new BigDecimal(amount));
     request.setDestinationAccountId(destinationAccountId);
+    return request;
+  }
+
+  @Test
+  void creditFixedDepositPayout_shouldCreditPrincipalAndInterestAndPostBoth() {
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-PAYOUT-7")).thenReturn(Optional.empty());
+
+    TransactionResponse response =
+        savingsAccountService.creditFixedDepositPayout(1L, payoutOf("10000.00", "246.58"));
+
+    assertEquals(new BigDecimal("10746.58"), response.getNewBalance());
+    assertEquals(new BigDecimal("10746.58"), account.getBalance());
+    verify(ledgerPostingService)
+        .record(
+            eq("FIXED_DEPOSIT_PAYOUT"),
+            eq(new BigDecimal("10000.00")),
+            eq("FD-PAYOUT-7"),
+            anyString());
+    verify(ledgerPostingService)
+        .record(
+            eq("FIXED_DEPOSIT_INTEREST_PAYOUT"),
+            eq(new BigDecimal("246.58")),
+            eq("FD-PAYOUT-7-INT"),
+            anyString());
+  }
+
+  @Test
+  void creditFixedDepositPayout_alreadyCredited_shouldReturnEarlierResultWithoutPayingAgain() {
+    SavingsTransaction earlier = new SavingsTransaction();
+    earlier.setAccount(account);
+    earlier.setTransactionType(TransactionType.FIXED_DEPOSIT_PAYOUT);
+    earlier.setAmount(new BigDecimal("10246.58"));
+    earlier.setBalanceBefore(new BigDecimal("500.00"));
+    earlier.setBalanceAfter(new BigDecimal("10746.58"));
+    earlier.setReference("FD-PAYOUT-7");
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-PAYOUT-7"))
+        .thenReturn(Optional.of(earlier));
+
+    TransactionResponse response =
+        savingsAccountService.creditFixedDepositPayout(1L, payoutOf("10000.00", "246.58"));
+
+    assertEquals(new BigDecimal("10746.58"), response.getNewBalance());
+    assertEquals(new BigDecimal("500.00"), account.getBalance());
+    verify(savingsAccountRepository, never()).save(any(SavingsAccount.class));
+    verifyNoInteractions(ledgerPostingService);
+  }
+
+  @Test
+  void creditFixedDepositPayout_referenceUsedOnAnotherAccount_shouldThrowException() {
+    SavingsTransaction earlier = new SavingsTransaction();
+    earlier.setAccount(destinationAccount());
+    earlier.setReference("FD-PAYOUT-7");
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-PAYOUT-7"))
+        .thenReturn(Optional.of(earlier));
+
+    assertThrows(
+        PayoutReferenceConflictException.class,
+        () -> savingsAccountService.creditFixedDepositPayout(1L, payoutOf("10000.00", "246.58")));
+
+    verifyNoInteractions(ledgerPostingService);
+  }
+
+  @Test
+  void creditFixedDepositPayout_toInactiveAccount_shouldThrowException() {
+    account.setStatus(SavingsAccountStatus.CLOSED);
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-PAYOUT-7")).thenReturn(Optional.empty());
+
+    assertThrows(
+        AccountNotActiveException.class,
+        () -> savingsAccountService.creditFixedDepositPayout(1L, payoutOf("10000.00", "246.58")));
+
+    verifyNoInteractions(ledgerPostingService);
+  }
+
+  private FixedDepositPayoutRequest payoutOf(String principal, String interest) {
+    FixedDepositPayoutRequest request = new FixedDepositPayoutRequest();
+    request.setReference("FD-PAYOUT-7");
+    request.setPrincipal(new BigDecimal(principal));
+    request.setInterest(new BigDecimal(interest));
     return request;
   }
 }

@@ -17,6 +17,10 @@ public class FixedDepositMapper {
         .maturityAmount(deposit.getMaturityAmount())
         .status(deposit.getStatus())
         .createdAt(deposit.getCreatedAt())
+        .payoutAccountId(deposit.getPayoutAccountId())
+        .payoutStatus(deposit.getPayoutStatus())
+        .payoutError(deposit.getPayoutError())
+        .paidOutAt(deposit.getPaidOutAt())
         .build();
   }
 

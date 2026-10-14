@@ -1,5 +1,6 @@
 package com.corebanking.savingsservice.service;
 
+import com.corebanking.savingsservice.dto.FixedDepositPayoutRequest;
 import com.corebanking.savingsservice.dto.OpenSavingsAccountRequest;
 import com.corebanking.savingsservice.dto.SavingsAccountResponse;
 import com.corebanking.savingsservice.dto.SavingsTransactionResponse;
@@ -16,6 +17,7 @@ import com.corebanking.savingsservice.exception.AccountNotActiveException;
 import com.corebanking.savingsservice.exception.AccountNotFoundException;
 import com.corebanking.savingsservice.exception.InsufficientBalanceException;
 import com.corebanking.savingsservice.exception.InvalidTransferException;
+import com.corebanking.savingsservice.exception.PayoutReferenceConflictException;
 import com.corebanking.savingsservice.exception.ProductNotFoundException;
 import com.corebanking.savingsservice.repository.SavingsAccountRepository;
 import com.corebanking.savingsservice.repository.SavingsProductRepository;
@@ -27,6 +29,7 @@ import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +43,8 @@ public class SavingsAccountService {
 
   private static final String LEDGER_DEPOSIT = "SAVINGS_DEPOSIT";
   private static final String LEDGER_WITHDRAWAL = "SAVINGS_WITHDRAWAL";
+  private static final String LEDGER_FD_PAYOUT = "FIXED_DEPOSIT_PAYOUT";
+  private static final String LEDGER_FD_INTEREST_PAYOUT = "FIXED_DEPOSIT_INTEREST_PAYOUT";
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private final SavingsAccountRepository savingsAccountRepository;
@@ -232,14 +237,16 @@ public class SavingsAccountService {
         request.getAmount(),
         sourceBalanceBefore,
         sourceBalanceAfter,
-        "Transfer to " + destination.getAccountNumber());
+        "Transfer to " + destination.getAccountNumber(),
+        null);
     saveTransaction(
         destination,
         TransactionType.TRANSFER_IN,
         request.getAmount(),
         destinationBalanceBefore,
         destinationBalanceAfter,
-        "Transfer from " + source.getAccountNumber());
+        "Transfer from " + source.getAccountNumber(),
+        null);
     log.info("Transfer successful. New balance of source account: {}", sourceBalanceAfter);
 
     return TransferResponse.builder()
@@ -251,6 +258,74 @@ public class SavingsAccountService {
         .newBalance(sourceBalanceAfter)
         .transactionDate(LocalDateTime.now())
         .build();
+  }
+
+  /*
+   * Credits a matured fixed deposit (principal plus interest) to the account.
+   * The fixed deposit service retries until it gets an answer, so a reference
+   * that was already credited returns the earlier result instead of paying
+   * twice. The account row lock makes concurrent retries wait their turn.
+   */
+  @Transactional
+  public TransactionResponse creditFixedDepositPayout(
+      Long accountId, FixedDepositPayoutRequest request) {
+    log.info(
+        "Processing fixed deposit payout {} into account ID: {}",
+        request.getReference(),
+        accountId);
+
+    SavingsAccount account = lockAccount(accountId);
+
+    Optional<SavingsTransaction> alreadyCredited =
+        savingsTransactionRepository.findByReference(request.getReference());
+    if (alreadyCredited.isPresent()) {
+      SavingsTransaction earlier = alreadyCredited.get();
+      if (!earlier.getAccount().getId().equals(accountId)) {
+        throw new PayoutReferenceConflictException(
+            "Payout " + request.getReference() + " was already credited to another account");
+      }
+      log.info("Fixed deposit payout {} was already credited", request.getReference());
+      return toTransactionResponse(accountId, earlier);
+    }
+
+    validateAccountIsActive(account);
+
+    BigDecimal amount = request.getPrincipal().add(request.getInterest());
+    BigDecimal balanceBefore = account.getBalance();
+    BigDecimal newBalance = balanceBefore.add(amount);
+    account.setBalance(newBalance);
+    account.setAvailableBalance(newBalance);
+    savingsAccountRepository.save(account);
+
+    String description = "Fixed deposit payout - " + request.getReference();
+    SavingsTransaction transaction =
+        saveTransaction(
+            account,
+            TransactionType.FIXED_DEPOSIT_PAYOUT,
+            amount,
+            balanceBefore,
+            newBalance,
+            description,
+            request.getReference());
+
+    // Principal and interest come from different places in the books, so
+    // they are posted separately.
+    ledgerPostingService.record(
+        LEDGER_FD_PAYOUT,
+        request.getPrincipal(),
+        request.getReference(),
+        "Fixed deposit payout (principal) - " + request.getReference());
+    if (request.getInterest().compareTo(BigDecimal.ZERO) > 0) {
+      ledgerPostingService.record(
+          LEDGER_FD_INTEREST_PAYOUT,
+          request.getInterest(),
+          request.getReference() + "-INT",
+          "Fixed deposit payout (interest) - " + request.getReference());
+    }
+    log.info(
+        "Fixed deposit payout {} credited. New balance: {}", request.getReference(), newBalance);
+
+    return toTransactionResponse(accountId, transaction);
   }
 
   public List<SavingsAccountResponse> getAccountsByClientId(Long clientId) {
@@ -299,6 +374,18 @@ public class SavingsAccountService {
               + " is not active. Current status: "
               + account.getStatus());
     }
+  }
+
+  private TransactionResponse toTransactionResponse(
+      Long accountId, SavingsTransaction transaction) {
+    return TransactionResponse.builder()
+        .accountId(accountId)
+        .transactionType(transaction.getTransactionType().name())
+        .amount(transaction.getAmount())
+        .balanceBefore(transaction.getBalanceBefore())
+        .newBalance(transaction.getBalanceAfter())
+        .transactionDate(transaction.getTransactionDate())
+        .build();
   }
 
   private SavingsAccount lockAccount(Long accountId) {
@@ -351,7 +438,7 @@ public class SavingsAccountService {
       BigDecimal balanceAfter,
       String description) {
     SavingsTransaction savedTransaction =
-        saveTransaction(account, type, amount, balanceBefore, balanceAfter, description);
+        saveTransaction(account, type, amount, balanceBefore, balanceAfter, description, null);
 
     String reference = account.getAccountNumber() + "-" + savedTransaction.getId();
     ledgerPostingService.record(ledgerType, amount, reference, description + " - " + reference);
@@ -363,7 +450,8 @@ public class SavingsAccountService {
       BigDecimal amount,
       BigDecimal balanceBefore,
       BigDecimal balanceAfter,
-      String description) {
+      String description,
+      String reference) {
     SavingsTransaction transaction = new SavingsTransaction();
     transaction.setAccount(account);
     transaction.setTransactionType(type);
@@ -371,6 +459,7 @@ public class SavingsAccountService {
     transaction.setBalanceBefore(balanceBefore);
     transaction.setBalanceAfter(balanceAfter);
     transaction.setDescription(description);
+    transaction.setReference(reference);
     return savingsTransactionRepository.save(transaction);
   }
 

@@ -20,6 +20,9 @@ public class CreateFixedDepositRequest {
   @DecimalMin(value = "0.0", inclusive = false, message = "Interest rate must be greater than zero")
   private BigDecimal interestRate;
 
+  @NotNull(message = "Payout account ID is required")
+  private Long payoutAccountId;
+
   @NotNull(message = "Tenure is required")
   @Min(value = 1, message = "Tenure must be at least 1 day")
   private Integer tenureInDays;

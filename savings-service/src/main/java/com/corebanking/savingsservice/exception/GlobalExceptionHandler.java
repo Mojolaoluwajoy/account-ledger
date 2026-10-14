@@ -71,6 +71,12 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(PayoutReferenceConflictException.class)
+  public ResponseEntity<ApiResponse<Object>> handlePayoutReferenceConflict(
+      PayoutReferenceConflictException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<ApiResponse<Object>> handleUnreadableBody(
       HttpMessageNotReadableException ex) {

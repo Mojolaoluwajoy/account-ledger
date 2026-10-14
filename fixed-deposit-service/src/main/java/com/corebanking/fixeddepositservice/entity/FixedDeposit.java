@@ -1,6 +1,7 @@
 package com.corebanking.fixeddepositservice.entity;
 
 import com.corebanking.fixeddepositservice.enums.FixedDepositStatus;
+import com.corebanking.fixeddepositservice.enums.PayoutStatus;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -47,4 +48,22 @@ public class FixedDeposit {
 
   @Column(nullable = false, updatable = false)
   private LocalDateTime createdAt = LocalDateTime.now();
+
+  /*
+   * The savings account that receives principal and interest at maturity.
+   * Empty only for deposits created before payouts existed; those are paid
+   * out in cash as before.
+   */
+  private Long payoutAccountId;
+
+  /* Empty until the deposit matures. */
+  @Enumerated(EnumType.STRING)
+  private PayoutStatus payoutStatus;
+
+  @Column(nullable = false)
+  private int payoutAttempts = 0;
+
+  private String payoutError;
+
+  private LocalDateTime paidOutAt;
 }

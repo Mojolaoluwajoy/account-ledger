@@ -69,6 +69,17 @@ public class LedgerService {
         debitAccountCode = "5001";
         creditAccountCode = "1001";
       }
+      // Principal paid into the customer's savings account at maturity: the
+      // fixed deposit obligation becomes a savings obligation.
+      case FIXED_DEPOSIT_PAYOUT -> {
+        debitAccountCode = "2002";
+        creditAccountCode = "2001";
+      }
+      // Interest paid into the customer's savings account at maturity.
+      case FIXED_DEPOSIT_INTEREST_PAYOUT -> {
+        debitAccountCode = "5001";
+        creditAccountCode = "2001";
+      }
       default ->
           throw new IllegalArgumentException(
               "Unknown transaction type: " + request.getTransactionType());

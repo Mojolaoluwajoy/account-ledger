@@ -66,6 +66,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgres
       LEDGER_SERVICE_URL: http://ledger-service:8084
       CLIENT_SERVICE_URL: http://client-service:8081
+      SAVINGS_SERVICE_URL: http://savings-service:8082
     depends_on:
       postgres:
         condition: service_healthy
