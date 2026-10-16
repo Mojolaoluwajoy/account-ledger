@@ -2,14 +2,18 @@ package com.corebanking.fixeddepositservice.service;
 
 import com.corebanking.fixeddepositservice.entity.FixedDeposit;
 import com.corebanking.fixeddepositservice.enums.PayoutStatus;
+import com.corebanking.fixeddepositservice.exception.FixedDepositNotFoundException;
+import com.corebanking.fixeddepositservice.exception.NotRetryableException;
 import com.corebanking.fixeddepositservice.repository.FixedDepositRepository;
 import com.corebanking.fixeddepositservice.util.SavingsServiceClient;
 import feign.FeignException;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -63,6 +67,47 @@ public class FixedDepositPayoutService {
       }
       fixedDepositRepository.save(deposit);
     }
+  }
+
+  public List<FixedDeposit> findByPayoutStatus(PayoutStatus status) {
+    return fixedDepositRepository.findByPayoutStatusOrderByIdAsc(status);
+  }
+
+  /*
+   * Puts a FAILED payout back in the queue, optionally into a different
+   * savings account. payOutPending picks it up on its next run. The payout
+   * keeps its reference, so it still cannot be credited twice.
+   */
+  @Transactional
+  public FixedDeposit retry(Long depositId, Long newPayoutAccountId) {
+    FixedDeposit deposit =
+        fixedDepositRepository
+            .findByIdForUpdate(depositId)
+            .orElseThrow(
+                () ->
+                    new FixedDepositNotFoundException(
+                        "Fixed deposit not found with ID: " + depositId));
+
+    if (deposit.getPayoutStatus() != PayoutStatus.FAILED) {
+      throw new NotRetryableException(
+          "Payout of fixed deposit "
+              + depositId
+              + " is "
+              + deposit.getPayoutStatus()
+              + "; only FAILED payouts can be retried");
+    }
+
+    if (newPayoutAccountId != null) {
+      savingsServiceClient.requirePayoutAccount(newPayoutAccountId, deposit.getClientId());
+      deposit.setPayoutAccountId(newPayoutAccountId);
+    }
+
+    deposit.setPayoutStatus(PayoutStatus.PENDING);
+    log.info(
+        "Payout of fixed deposit {} queued again into savings account {}",
+        depositId,
+        deposit.getPayoutAccountId());
+    return fixedDepositRepository.save(deposit);
   }
 
   private String truncate(String message) {

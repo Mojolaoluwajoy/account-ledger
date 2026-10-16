@@ -29,6 +29,8 @@ public interface FixedDepositRepository extends JpaRepository<FixedDeposit, Long
 
   List<FixedDeposit> findTop50ByPayoutStatusOrderByIdAsc(PayoutStatus payoutStatus);
 
+  List<FixedDeposit> findByPayoutStatusOrderByIdAsc(PayoutStatus payoutStatus);
+
   List<FixedDeposit> findByStatus(FixedDepositStatus status);
 
   List<FixedDeposit> findByStatusAndMaturityDateLessThanEqual(

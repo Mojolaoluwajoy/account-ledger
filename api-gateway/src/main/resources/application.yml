@@ -37,6 +37,18 @@ spring:
               predicates:
                 - Path=/api/v1/fixed-deposits/**
 
+            # Operational endpoints: list and retry failed ledger postings
+            # and payouts.
+            - id: savings-admin
+              uri: ${services.savings}
+              predicates:
+                - Path=/api/v1/admin/savings/**
+
+            - id: fixed-deposits-admin
+              uri: ${services.fixed-deposit}
+              predicates:
+                - Path=/api/v1/admin/fixed-deposits/**
+
             - id: ledger
               uri: ${services.ledger}
               predicates:

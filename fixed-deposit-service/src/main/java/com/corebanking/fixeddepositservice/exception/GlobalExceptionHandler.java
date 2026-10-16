@@ -96,6 +96,17 @@ public class GlobalExceptionHandler {
             ApiResponse.error("The fixed deposit is busy with another request. Please try again."));
   }
 
+  @ExceptionHandler(LedgerPostingNotFoundException.class)
+  public ResponseEntity<ApiResponse<Object>> handleLedgerPostingNotFound(
+      LedgerPostingNotFoundException ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  @ExceptionHandler(NotRetryableException.class)
+  public ResponseEntity<ApiResponse<Object>> handleNotRetryable(NotRetryableException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<ApiResponse<Object>> handleUnreadableBody(
       HttpMessageNotReadableException ex) {
