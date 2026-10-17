@@ -4,6 +4,7 @@ import com.corebanking.fixeddepositservice.dto.ApiResponse;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -78,6 +79,31 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(FixedDepositNotActiveException.class)
   public ResponseEntity<ApiResponse<Object>> handleDepositNotActive(
       FixedDepositNotActiveException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  /*
+   * The row we needed stayed locked by another request for longer than the
+   * lock timeout. Nothing was changed, so trying again is safe. A 503 (not a
+   * 4xx) so that services calling us treat it as temporary and retry.
+   */
+  @ExceptionHandler(PessimisticLockingFailureException.class)
+  public ResponseEntity<ApiResponse<Object>> handleLockTimeout(
+      PessimisticLockingFailureException ex) {
+    log.warn("Gave up waiting for a row lock: {}", ex.getMessage());
+    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+        .body(
+            ApiResponse.error("The fixed deposit is busy with another request. Please try again."));
+  }
+
+  @ExceptionHandler(LedgerPostingNotFoundException.class)
+  public ResponseEntity<ApiResponse<Object>> handleLedgerPostingNotFound(
+      LedgerPostingNotFoundException ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  @ExceptionHandler(NotRetryableException.class)
+  public ResponseEntity<ApiResponse<Object>> handleNotRetryable(NotRetryableException ex) {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
   }
 

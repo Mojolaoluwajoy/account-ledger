@@ -7,6 +7,7 @@ import com.corebanking.clientservice.dto.FineractCreateClientRequest;
 import com.corebanking.clientservice.dto.FineractUpdateClientRequest;
 import com.corebanking.clientservice.entity.Client;
 import com.corebanking.clientservice.entity.ClientStatus;
+import com.corebanking.clientservice.exception.ClientChangedException;
 import com.corebanking.clientservice.exception.ClientNotFoundException;
 import com.corebanking.clientservice.exception.DuplicateEmailException;
 import com.corebanking.clientservice.exception.DuplicatePhoneNumberException;
@@ -25,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -203,10 +205,20 @@ public class ClientService {
     }
   }
 
-  /* Keeps the reason on the client so a stuck sync is visible through the API. */
+  /*
+   * Keeps the reason on the client so a stuck sync is visible through the API.
+   * If the client was changed while we were talking to Fineract, our copy is
+   * out of date and cannot be saved; the next sync run starts from the
+   * current version instead.
+   */
   private void recordSyncError(Client client, Exception e) {
     client.setFineractSyncError(describe(e));
-    clientRepository.save(client);
+    try {
+      clientRepository.save(client);
+    } catch (OptimisticLockingFailureException conflict) {
+      log.warn(
+          "Client {} changed during Fineract sync, will retry on the next run", client.getId());
+    }
   }
 
   /* Prefers Fineract's own explanation when it sent one. */
@@ -251,12 +263,28 @@ public class ClientService {
         .collect(Collectors.toList());
   }
 
-  public ClientResponse updateClient(Long id, CreateClientRequest request) {
+  /*
+   * expectedVersion is the version the caller last read. When given, the
+   * update is refused if the client has changed since, so one person's edit
+   * cannot silently undo another's.
+   */
+  public ClientResponse updateClient(Long id, CreateClientRequest request, Long expectedVersion) {
     log.info("Updating client with ID: {}", id);
     Client client =
         clientRepository
             .findById(id)
             .orElseThrow(() -> new ClientNotFoundException("Client not found with ID: " + id));
+
+    if (expectedVersion != null && !expectedVersion.equals(client.getVersion())) {
+      throw new ClientChangedException(
+          "Client "
+              + id
+              + " has changed since version "
+              + expectedVersion
+              + " (now version "
+              + client.getVersion()
+              + "). Reload it and try again.");
+    }
 
     if (!client.getEmail().equalsIgnoreCase(request.getEmail())
         && clientRepository.existsByEmail(request.getEmail())) {

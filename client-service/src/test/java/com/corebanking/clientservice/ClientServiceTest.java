@@ -21,6 +21,7 @@ import com.corebanking.clientservice.dto.FineractCreateClientRequest;
 import com.corebanking.clientservice.dto.FineractUpdateClientRequest;
 import com.corebanking.clientservice.entity.Client;
 import com.corebanking.clientservice.entity.ClientStatus;
+import com.corebanking.clientservice.exception.ClientChangedException;
 import com.corebanking.clientservice.exception.ClientNotFoundException;
 import com.corebanking.clientservice.exception.DuplicateEmailException;
 import com.corebanking.clientservice.exception.DuplicatePhoneNumberException;
@@ -38,6 +39,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 @ExtendWith(MockitoExtension.class)
 public class ClientServiceTest {
@@ -224,7 +226,7 @@ public class ClientServiceTest {
     when(clientRepository.existsByEmail("janet@gmail.com")).thenReturn(false);
     when(clientRepository.save(any(Client.class))).thenReturn(savedClient);
 
-    ClientResponse response = clientService.updateClient(1L, validRequest);
+    ClientResponse response = clientService.updateClient(1L, validRequest, null);
 
     ArgumentCaptor<FineractUpdateClientRequest> sent =
         ArgumentCaptor.forClass(FineractUpdateClientRequest.class);
@@ -245,7 +247,7 @@ public class ClientServiceTest {
     when(fineractClient.updateClient(eq(42L), any(FineractUpdateClientRequest.class)))
         .thenThrow(new RuntimeException("Fineract unavailable"));
 
-    ClientResponse response = clientService.updateClient(1L, validRequest);
+    ClientResponse response = clientService.updateClient(1L, validRequest, null);
 
     assertEquals("Janet", response.getFirstName());
     assertTrue(response.isFineractSyncPending());
@@ -258,7 +260,7 @@ public class ClientServiceTest {
     when(clientRepository.findById(1L)).thenReturn(Optional.of(savedClient));
     when(clientRepository.save(any(Client.class))).thenReturn(savedClient);
 
-    ClientResponse response = clientService.updateClient(1L, validRequest);
+    ClientResponse response = clientService.updateClient(1L, validRequest, null);
 
     assertFalse(response.isFineractSyncPending());
     verify(fineractClient, never()).updateClient(any(), any(FineractUpdateClientRequest.class));
@@ -270,7 +272,8 @@ public class ClientServiceTest {
     when(clientRepository.findById(1L)).thenReturn(Optional.of(savedClient));
     when(clientRepository.existsByEmail("taken@gmail.com")).thenReturn(true);
 
-    assertThrows(DuplicateEmailException.class, () -> clientService.updateClient(1L, validRequest));
+    assertThrows(
+        DuplicateEmailException.class, () -> clientService.updateClient(1L, validRequest, null));
 
     verify(clientRepository, never()).save(any(Client.class));
   }
@@ -304,5 +307,51 @@ public class ClientServiceTest {
     FineractClientSearchResponse response = new FineractClientSearchResponse();
     response.setPageItems(List.of(item));
     return response;
+  }
+
+  @Test
+  void updateClient_basedOnOutdatedVersion_shouldThrowClientChangedAndSaveNothing() {
+    savedClient.setVersion(3L);
+    when(clientRepository.findById(1L)).thenReturn(Optional.of(savedClient));
+
+    assertThrows(
+        ClientChangedException.class, () -> clientService.updateClient(1L, validRequest, 2L));
+
+    verify(clientRepository, never()).save(any(Client.class));
+  }
+
+  @Test
+  void updateClient_basedOnCurrentVersion_shouldSave() {
+    savedClient.setVersion(3L);
+    when(clientRepository.findById(1L)).thenReturn(Optional.of(savedClient));
+    when(clientRepository.save(any(Client.class))).thenReturn(savedClient);
+
+    clientService.updateClient(1L, validRequest, 3L);
+
+    verify(clientRepository).save(savedClient);
+  }
+
+  @Test
+  void retryPendingFineractSync_whenClientChangedMeanwhile_shouldCarryOnWithOtherClients() {
+    Client changedMeanwhile = new Client();
+    changedMeanwhile.setId(2L);
+    changedMeanwhile.setFirstName("Ade");
+    changedMeanwhile.setLastName("Ola");
+    changedMeanwhile.setEmail("ade@gmail.com");
+    changedMeanwhile.setPhoneNumber("08000000002");
+    savedClient.setStatus(ClientStatus.PENDING);
+    FineractClientResponse fineractResponse = new FineractClientResponse();
+    fineractResponse.setClientId(42L);
+    when(clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING))
+        .thenReturn(List.of(changedMeanwhile, savedClient));
+    when(fineractClient.createClient(any(FineractCreateClientRequest.class)))
+        .thenReturn(fineractResponse);
+    when(clientRepository.save(changedMeanwhile))
+        .thenThrow(new ObjectOptimisticLockingFailureException(Client.class, 2L));
+
+    clientService.retryPendingFineractSync();
+
+    assertEquals(ClientStatus.ACTIVE, savedClient.getStatus());
+    verify(clientRepository).save(savedClient);
   }
 }

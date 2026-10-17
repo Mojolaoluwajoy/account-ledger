@@ -31,6 +31,7 @@ public class ClientMapper {
         .fineractClientId(client.getFineractClientId())
         .fineractSyncPending(client.isFineractSyncPending())
         .fineractSyncError(client.getFineractSyncError())
+        .version(client.getVersion())
         .build();
   }
 

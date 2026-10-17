@@ -3,6 +3,7 @@ package com.corebanking.clientservice.controller;
 import com.corebanking.clientservice.dto.ApiResponse;
 import com.corebanking.clientservice.dto.ClientResponse;
 import com.corebanking.clientservice.dto.CreateClientRequest;
+import com.corebanking.clientservice.dto.UpdateClientRequest;
 import com.corebanking.clientservice.service.ClientService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -44,8 +45,8 @@ public class ClientController {
 
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<ClientResponse>> updateClient(
-      @PathVariable Long id, @Valid @RequestBody CreateClientRequest request) {
-    ClientResponse response = clientService.updateClient(id, request);
+      @PathVariable Long id, @Valid @RequestBody UpdateClientRequest request) {
+    ClientResponse response = clientService.updateClient(id, request, request.getVersion());
     return ResponseEntity.ok(ApiResponse.success("Client updated successfully", response));
   }
 }

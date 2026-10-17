@@ -10,4 +10,6 @@ import org.springframework.stereotype.Repository;
 public interface LedgerPostingRepository extends JpaRepository<LedgerPosting, Long> {
 
   List<LedgerPosting> findTop50ByStatusOrderByIdAsc(LedgerPostingStatus status);
+
+  List<LedgerPosting> findByStatusOrderByIdAsc(LedgerPostingStatus status);
 }
