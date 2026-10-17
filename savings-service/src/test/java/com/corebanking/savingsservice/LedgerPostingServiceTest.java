@@ -78,7 +78,10 @@ class LedgerPostingServiceTest {
             null,
             StandardCharsets.UTF_8,
             null);
-    doThrow(new FeignException.BadRequest("Validation failed", request, null, Map.of()))
+    byte[] body =
+        "{\"success\":false,\"message\":\"Unknown transaction type: TEST_TYPE\"}"
+            .getBytes(StandardCharsets.UTF_8);
+    doThrow(new FeignException.BadRequest("Bad Request", request, body, Map.of()))
         .when(ledgerClient)
         .post(posting);
 
@@ -86,7 +89,8 @@ class LedgerPostingServiceTest {
 
     assertEquals(LedgerPostingStatus.FAILED, posting.getStatus());
     assertEquals(1, posting.getAttempts());
-    assertEquals("Validation failed", posting.getLastError());
+    assertEquals(
+        "Ledger service answered 400: Unknown transaction type: TEST_TYPE", posting.getLastError());
     verify(ledgerPostingRepository).save(posting);
   }
 }
