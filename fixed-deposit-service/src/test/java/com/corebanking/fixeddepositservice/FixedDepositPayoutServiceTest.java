@@ -84,14 +84,19 @@ class FixedDepositPayoutServiceTest {
 
   @Test
   void payOutPending_whenSavingsRejects_shouldMarkFailedAndNotRetry() {
-    doThrow(new FeignException.Conflict("Account is not active", REQUEST, null, Map.of()))
+    byte[] body =
+        "{\"success\":false,\"message\":\"Account SAV1 is not active. Current status: CLOSED\"}"
+            .getBytes(StandardCharsets.UTF_8);
+    doThrow(new FeignException.Conflict("Conflict", REQUEST, body, Map.of()))
         .when(savingsServiceClient)
         .payOut(deposit);
 
     fixedDepositPayoutService.payOutPending();
 
     assertEquals(PayoutStatus.FAILED, deposit.getPayoutStatus());
-    assertEquals("Account is not active", deposit.getPayoutError());
+    assertEquals(
+        "Savings service answered 409: Account SAV1 is not active. Current status: CLOSED",
+        deposit.getPayoutError());
     verify(fixedDepositRepository).save(deposit);
   }
 }

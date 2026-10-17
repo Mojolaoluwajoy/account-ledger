@@ -5,6 +5,7 @@ import com.corebanking.fixeddepositservice.enums.PayoutStatus;
 import com.corebanking.fixeddepositservice.exception.FixedDepositNotFoundException;
 import com.corebanking.fixeddepositservice.exception.NotRetryableException;
 import com.corebanking.fixeddepositservice.repository.FixedDepositRepository;
+import com.corebanking.fixeddepositservice.util.RemoteErrors;
 import com.corebanking.fixeddepositservice.util.SavingsServiceClient;
 import feign.FeignException;
 import java.time.LocalDateTime;
@@ -51,19 +52,19 @@ public class FixedDepositPayoutService {
       } catch (FeignException.FeignClientException e) {
         deposit.setPayoutStatus(PayoutStatus.FAILED);
         deposit.setPayoutAttempts(deposit.getPayoutAttempts() + 1);
-        deposit.setPayoutError(truncate(e.getMessage()));
+        deposit.setPayoutError(truncate(RemoteErrors.describe("Savings service", e)));
         log.error(
             "Payout {} was rejected by the savings service and will not be retried: {}",
             reference,
-            e.getMessage());
+            deposit.getPayoutError());
       } catch (Exception e) {
         deposit.setPayoutAttempts(deposit.getPayoutAttempts() + 1);
-        deposit.setPayoutError(truncate(e.getMessage()));
+        deposit.setPayoutError(truncate(RemoteErrors.describe("Savings service", e)));
         log.warn(
             "Payout {} failed (attempt {}), will retry: {}",
             reference,
             deposit.getPayoutAttempts(),
-            e.getMessage());
+            deposit.getPayoutError());
       }
       fixedDepositRepository.save(deposit);
     }

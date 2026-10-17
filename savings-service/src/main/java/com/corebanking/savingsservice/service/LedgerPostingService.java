@@ -6,6 +6,7 @@ import com.corebanking.savingsservice.exception.LedgerPostingNotFoundException;
 import com.corebanking.savingsservice.exception.NotRetryableException;
 import com.corebanking.savingsservice.repository.LedgerPostingRepository;
 import com.corebanking.savingsservice.util.LedgerClient;
+import com.corebanking.savingsservice.util.RemoteErrors;
 import feign.FeignException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -64,19 +65,19 @@ public class LedgerPostingService {
       } catch (FeignException.FeignClientException e) {
         posting.setStatus(LedgerPostingStatus.FAILED);
         posting.setAttempts(posting.getAttempts() + 1);
-        posting.setLastError(truncate(e.getMessage()));
+        posting.setLastError(truncate(RemoteErrors.describe("Ledger service", e)));
         log.error(
             "Ledger posting {} was rejected by the ledger service and will not be retried: {}",
             posting.getTransactionReference(),
-            e.getMessage());
+            posting.getLastError());
       } catch (Exception e) {
         posting.setAttempts(posting.getAttempts() + 1);
-        posting.setLastError(truncate(e.getMessage()));
+        posting.setLastError(truncate(RemoteErrors.describe("Ledger service", e)));
         log.warn(
             "Ledger posting {} failed (attempt {}), will retry: {}",
             posting.getTransactionReference(),
             posting.getAttempts(),
-            e.getMessage());
+            posting.getLastError());
       }
       ledgerPostingRepository.save(posting);
     }
