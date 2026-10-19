@@ -1,5 +1,7 @@
 # Account Ledger
 
+[![CI](https://github.com/Mojolaoluwajoy/account-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/Mojolaoluwajoy/account-ledger/actions/workflows/ci.yml)
+
 Deposit accounts and a double-entry ledger, built as Spring Boot microservices:
 clients, savings accounts, transfers and fixed deposits, with every movement of
 money recorded in the ledger, behind one API gateway.
@@ -164,6 +166,13 @@ mvn test        # unit and integration tests; they use an in-memory H2 database,
 mvn verify      # also checks formatting (Google Java Format via Spotless)
 mvn spotless:apply   # fix formatting
 ```
+
+## Branches and CI
+
+- `dev` collects finished work through pull requests; `main` is updated from `dev`.
+- GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request
+  to `main` and `dev`: it builds every service, runs the tests, checks the
+  formatting, validates `docker-compose.yml` and builds the Docker images.
 
 ## Not done yet
 
