@@ -9,8 +9,11 @@ services:
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: postgres
+    # Every port except the gateway's is bound to 127.0.0.1: reachable from
+    # this machine for debugging, but not from the network, so the gateway is
+    # the only way in.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -27,7 +30,7 @@ services:
     build: ./client-service
     container_name: client-service
     ports:
-      - "8086:8081"
+      - "127.0.0.1:8086:8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/client_service_db
       SPRING_DATASOURCE_USERNAME: root
@@ -45,7 +48,7 @@ services:
     build: ./savings-service
     container_name: savings-service
     ports:
-      - "8082:8082"
+      - "127.0.0.1:8082:8082"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/savings_service_db
       SPRING_DATASOURCE_USERNAME: root
@@ -61,7 +64,7 @@ services:
     build: ./fixed-deposit-service
     container_name: fixed-deposit-service
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fixed_deposit_service_db
       SPRING_DATASOURCE_USERNAME: root
@@ -78,7 +81,7 @@ services:
     build: ./ledger-service
     container_name: ledger-service
     ports:
-      - "8084:8084"
+      - "127.0.0.1:8084:8084"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ledger_service_db
       SPRING_DATASOURCE_USERNAME: root
