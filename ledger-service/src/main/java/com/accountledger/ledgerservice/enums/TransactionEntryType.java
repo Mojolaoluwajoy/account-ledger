@@ -1,0 +1,11 @@
+package com.accountledger.ledgerservice.enums;
+
+public enum TransactionEntryType {
+  SAVINGS_DEPOSIT,
+  SAVINGS_WITHDRAWAL,
+  FIXED_DEPOSIT_CREATION,
+  FIXED_DEPOSIT_MATURITY,
+  FIXED_DEPOSIT_INTEREST,
+  FIXED_DEPOSIT_PAYOUT,
+  FIXED_DEPOSIT_INTEREST_PAYOUT
+}
