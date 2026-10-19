@@ -1,7 +1,8 @@
-# Core Banking System
+# Account Ledger
 
-A small core banking system built as Spring Boot microservices: clients, savings
-accounts, fixed deposits and a double-entry ledger, behind one API gateway.
+Deposit accounts and a double-entry ledger, built as Spring Boot microservices:
+clients, savings accounts, transfers and fixed deposits, with every movement of
+money recorded in the ledger, behind one API gateway.
 Clients are also created in [Apache Fineract](https://fineract.apache.org/)
 (the Mifos sandbox by default).
 

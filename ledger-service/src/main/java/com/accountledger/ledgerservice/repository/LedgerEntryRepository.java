@@ -1,0 +1,17 @@
+package com.accountledger.ledgerservice.repository;
+
+import com.accountledger.ledgerservice.entity.LedgerEntry;
+import com.accountledger.ledgerservice.enums.TransactionEntryType;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> {
+  List<LedgerEntry> findByTransactionReference(String transactionReference);
+
+  Optional<LedgerEntry> findFirstByTransactionReference(String transactionReference);
+
+  List<LedgerEntry> findByTransactionTypeOrderByEntryDateDesc(TransactionEntryType transactionType);
+}

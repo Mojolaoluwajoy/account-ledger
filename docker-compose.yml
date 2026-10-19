@@ -1,7 +1,11 @@
+# Fixed project name, so container and volume names stay the same whatever
+# the folder is called.
+name: account-ledger
+
 services:
   postgres:
     image: postgres:15
-    container_name: core-banking-postgres
+    container_name: account-ledger-postgres
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: postgres

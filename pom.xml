@@ -13,13 +13,13 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.corebanking</groupId>
-    <artifactId>core-banking</artifactId>
+    <groupId>com.accountledger</groupId>
+    <artifactId>account-ledger</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>Core Banking System</name>
-    <description>Microservices Core Banking System</description>
+    <name>Account Ledger</name>
+    <description>Deposit accounts and a double-entry ledger, as Spring Boot microservices</description>
 
     <modules>
         <module>client-service</module>
