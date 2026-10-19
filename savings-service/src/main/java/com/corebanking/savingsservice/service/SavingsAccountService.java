@@ -2,6 +2,7 @@ package com.corebanking.savingsservice.service;
 
 import com.corebanking.savingsservice.dto.FixedDepositPayoutRequest;
 import com.corebanking.savingsservice.dto.OpenSavingsAccountRequest;
+import com.corebanking.savingsservice.dto.PageResponse;
 import com.corebanking.savingsservice.dto.SavingsAccountResponse;
 import com.corebanking.savingsservice.dto.SavingsTransactionResponse;
 import com.corebanking.savingsservice.dto.TransactionRequest;
@@ -23,6 +24,7 @@ import com.corebanking.savingsservice.repository.SavingsAccountRepository;
 import com.corebanking.savingsservice.repository.SavingsProductRepository;
 import com.corebanking.savingsservice.repository.SavingsTransactionRepository;
 import com.corebanking.savingsservice.util.ClientServiceClient;
+import com.corebanking.savingsservice.util.Paging;
 import com.corebanking.savingsservice.util.SavingsAccountMapper;
 import com.corebanking.savingsservice.util.SavingsTransactionMapper;
 import java.math.BigDecimal;
@@ -33,6 +35,8 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -350,8 +354,10 @@ public class SavingsAccountService {
     return SavingsAccountMapper.toResponse(account);
   }
 
+  /* Most recent first. */
   @Transactional(readOnly = true)
-  public List<SavingsTransactionResponse> getTransactionHistory(Long accountId) {
+  public PageResponse<SavingsTransactionResponse> getTransactionHistory(
+      Long accountId, int page, int size) {
     log.info("Fetching transaction history for account ID: {}", accountId);
 
     savingsAccountRepository
@@ -359,11 +365,12 @@ public class SavingsAccountService {
         .orElseThrow(
             () -> new AccountNotFoundException("Savings account not found with ID: " + accountId));
 
-    return savingsTransactionRepository
-        .findByAccountIdOrderByTransactionDateDesc(accountId)
-        .stream()
-        .map(SavingsTransactionMapper::toResponse)
-        .collect(Collectors.toList());
+    Page<SavingsTransaction> transactions =
+        savingsTransactionRepository.findByAccountId(
+            accountId,
+            Paging.request(page, size, Sort.by(Sort.Direction.DESC, "transactionDate", "id")));
+    return PageResponse.of(
+        transactions, transactions.map(SavingsTransactionMapper::toResponse).getContent());
   }
 
   private void validateAccountIsActive(SavingsAccount account) {

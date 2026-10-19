@@ -2,8 +2,10 @@ package com.corebanking.ledgerservice.controller;
 
 import com.corebanking.ledgerservice.dto.ApiResponse;
 import com.corebanking.ledgerservice.dto.LedgerEntryResponse;
+import com.corebanking.ledgerservice.dto.PageResponse;
 import com.corebanking.ledgerservice.dto.PostLedgerEntryRequest;
 import com.corebanking.ledgerservice.service.LedgerService;
+import com.corebanking.ledgerservice.util.Paging;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -44,10 +46,12 @@ public class LedgerController {
     return ResponseEntity.ok(ApiResponse.success("Ledger entry retrieved successfully", response));
   }
 
-  @Operation(summary = "Get all ledger entries")
+  @Operation(summary = "Get ledger entries, newest first, one page at a time")
   @GetMapping("/entries")
-  public ResponseEntity<ApiResponse<List<LedgerEntryResponse>>> getAllEntries() {
-    List<LedgerEntryResponse> response = ledgerService.getAllEntries();
+  public ResponseEntity<ApiResponse<PageResponse<LedgerEntryResponse>>> getEntries(
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "" + Paging.DEFAULT_SIZE) int size) {
+    PageResponse<LedgerEntryResponse> response = ledgerService.getEntries(page, size);
     return ResponseEntity.ok(
         ApiResponse.success("Ledger entries retrieved successfully", response));
   }

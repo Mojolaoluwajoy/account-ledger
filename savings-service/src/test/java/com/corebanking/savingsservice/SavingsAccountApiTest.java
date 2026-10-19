@@ -85,10 +85,10 @@ class SavingsAccountApiTest {
     mockMvc
         .perform(get("/api/v1/savings-accounts/" + account.getId() + "/transactions"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.length()").value(1))
-        .andExpect(jsonPath("$.data[0].accountId").value(account.getId()))
-        .andExpect(jsonPath("$.data[0].transactionType").value("DEPOSIT"))
-        .andExpect(jsonPath("$.data[0].balanceAfter").value(250.00));
+        .andExpect(jsonPath("$.data.totalElements").value(1))
+        .andExpect(jsonPath("$.data.content[0].accountId").value(account.getId()))
+        .andExpect(jsonPath("$.data.content[0].transactionType").value("DEPOSIT"))
+        .andExpect(jsonPath("$.data.content[0].balanceAfter").value(250.00));
 
     ledgerPostingService.publishPending();
 
