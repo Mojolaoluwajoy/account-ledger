@@ -3,11 +3,12 @@ package com.corebanking.clientservice.controller;
 import com.corebanking.clientservice.dto.ApiResponse;
 import com.corebanking.clientservice.dto.ClientResponse;
 import com.corebanking.clientservice.dto.CreateClientRequest;
+import com.corebanking.clientservice.dto.PageResponse;
 import com.corebanking.clientservice.dto.UpdateClientRequest;
 import com.corebanking.clientservice.service.ClientService;
+import com.corebanking.clientservice.util.Paging;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -38,8 +39,10 @@ public class ClientController {
   }
 
   @GetMapping
-  public ResponseEntity<ApiResponse<List<ClientResponse>>> getAllClients() {
-    List<ClientResponse> response = clientService.getAllClients();
+  public ResponseEntity<ApiResponse<PageResponse<ClientResponse>>> getClients(
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "" + Paging.DEFAULT_SIZE) int size) {
+    PageResponse<ClientResponse> response = clientService.getClients(page, size);
     return ResponseEntity.ok(ApiResponse.success("Clients retrieved successfully", response));
   }
 

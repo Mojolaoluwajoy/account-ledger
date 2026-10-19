@@ -5,6 +5,7 @@ import com.corebanking.clientservice.dto.CreateClientRequest;
 import com.corebanking.clientservice.dto.FineractClientSearchResponse;
 import com.corebanking.clientservice.dto.FineractCreateClientRequest;
 import com.corebanking.clientservice.dto.FineractUpdateClientRequest;
+import com.corebanking.clientservice.dto.PageResponse;
 import com.corebanking.clientservice.entity.Client;
 import com.corebanking.clientservice.entity.ClientStatus;
 import com.corebanking.clientservice.exception.ClientChangedException;
@@ -14,6 +15,7 @@ import com.corebanking.clientservice.exception.DuplicatePhoneNumberException;
 import com.corebanking.clientservice.feign.FineractClient;
 import com.corebanking.clientservice.repository.ClientRepository;
 import com.corebanking.clientservice.util.ClientMapper;
+import com.corebanking.clientservice.util.Paging;
 import feign.FeignException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -21,12 +23,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -256,11 +259,12 @@ public class ClientService {
     return ClientMapper.toResponse(client);
   }
 
-  public List<ClientResponse> getAllClients() {
-    log.info("Fetching all clients");
-    return clientRepository.findAll().stream()
-        .map(ClientMapper::toResponse)
-        .collect(Collectors.toList());
+  /* Oldest first, so a client keeps its place as new ones are added. */
+  public PageResponse<ClientResponse> getClients(int page, int size) {
+    log.info("Fetching clients, page {} of size {}", page, size);
+    Page<Client> clients =
+        clientRepository.findAll(Paging.request(page, size, Sort.by(Sort.Direction.ASC, "id")));
+    return PageResponse.of(clients, clients.map(ClientMapper::toResponse).getContent());
   }
 
   /*

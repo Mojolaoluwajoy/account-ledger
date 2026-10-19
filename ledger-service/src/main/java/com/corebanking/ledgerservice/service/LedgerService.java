@@ -1,6 +1,7 @@
 package com.corebanking.ledgerservice.service;
 
 import com.corebanking.ledgerservice.dto.LedgerEntryResponse;
+import com.corebanking.ledgerservice.dto.PageResponse;
 import com.corebanking.ledgerservice.dto.PostLedgerEntryRequest;
 import com.corebanking.ledgerservice.entity.*;
 import com.corebanking.ledgerservice.exception.GlAccountNotFoundException;
@@ -8,11 +9,14 @@ import com.corebanking.ledgerservice.exception.LedgerEntryNotFoundException;
 import com.corebanking.ledgerservice.repository.GlAccountRepository;
 import com.corebanking.ledgerservice.repository.LedgerEntryRepository;
 import com.corebanking.ledgerservice.util.LedgerEntryMapper;
+import com.corebanking.ledgerservice.util.Paging;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -121,10 +125,12 @@ public class LedgerService {
         .collect(Collectors.toList());
   }
 
-  public List<LedgerEntryResponse> getAllEntries() {
-    return ledgerEntryRepository.findAll().stream()
-        .map(LedgerEntryMapper::toResponse)
-        .collect(Collectors.toList());
+  /* Newest first. */
+  public PageResponse<LedgerEntryResponse> getEntries(int page, int size) {
+    Page<LedgerEntry> entries =
+        ledgerEntryRepository.findAll(
+            Paging.request(page, size, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
+    return PageResponse.of(entries, entries.map(LedgerEntryMapper::toResponse).getContent());
   }
 
   public LedgerEntryResponse getEntryById(Long id) {
