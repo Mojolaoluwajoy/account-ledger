@@ -114,6 +114,12 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(AccountHasBalanceException.class)
+  public ResponseEntity<ApiResponse<Object>> handleAccountHasBalance(
+      AccountHasBalanceException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<ApiResponse<Object>> handleUnreadableBody(
       HttpMessageNotReadableException ex) {

@@ -14,6 +14,8 @@ public interface InterestAccrualRepository extends JpaRepository<InterestAccrual
 
   Optional<InterestAccrual> findTopByAccountIdOrderByAccrualDateDesc(Long accountId);
 
+  List<InterestAccrual> findByAccountIdAndPostingReferenceIsNull(Long accountId);
+
   List<InterestAccrual> findByAccountIdAndPostingReferenceIsNullAndAccrualDateBefore(
       Long accountId, LocalDate before);
 

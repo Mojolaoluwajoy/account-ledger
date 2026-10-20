@@ -36,6 +36,7 @@ import com.accountledger.savingsservice.exception.ProductNotFoundException;
 import com.accountledger.savingsservice.repository.SavingsAccountRepository;
 import com.accountledger.savingsservice.repository.SavingsProductRepository;
 import com.accountledger.savingsservice.repository.SavingsTransactionRepository;
+import com.accountledger.savingsservice.service.InterestService;
 import com.accountledger.savingsservice.service.LedgerPostingService;
 import com.accountledger.savingsservice.service.SavingsAccountService;
 import com.accountledger.savingsservice.util.ClientServiceClient;
@@ -60,6 +61,8 @@ class SavingsAccountServiceTest {
   @Mock private LedgerPostingService ledgerPostingService;
 
   @Mock private ClientServiceClient clientServiceClient;
+
+  @Mock private InterestService interestService;
 
   @InjectMocks private SavingsAccountService savingsAccountService;
 

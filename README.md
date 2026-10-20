@@ -95,6 +95,12 @@ curl "$G/ledger/entries?page=0&size=20"
   transaction (ledger: debit 5001 Interest Expense, credit 2001). A month that
   rounds to 0.00 is carried into the next. Missed nights are caught up, and
   running twice pays nothing twice.
+- **Closing an account.** `POST /savings-accounts/{id}/close` pays the
+  interest earned up to yesterday, moves whatever is left to
+  `{"transferToAccountId": 2}` (required if anything is left) and marks the
+  account `CLOSED`. A closed account takes no more money in or out, and earns
+  no interest. A fixed deposit payout due to a closed account fails and can be
+  retried into another account (see the admin endpoints).
 - **Concurrency.** Balance changes lock the account row; transfers lock both
   rows, lowest ID first. A request gives up with a 503 after waiting 3 seconds
   for a lock. Client updates can send back the `version` they were based on and
@@ -122,7 +128,7 @@ Full request and response details are in the Swagger UI.
 |---|---|
 | Clients | `POST /clients`, `GET /clients`, `GET /clients/{id}`, `PUT /clients/{id}` |
 | Savings products | `POST /savings-products`, `GET /savings-products`, `GET /savings-products/{id}` |
-| Savings accounts | `POST /savings-accounts`, `GET /savings-accounts/{id}`, `GET /savings-accounts/client/{clientId}`, `POST /savings-accounts/{id}/deposit`, `POST .../withdraw`, `POST .../transfer`, `GET .../transactions` |
+| Savings accounts | `POST /savings-accounts`, `GET /savings-accounts/{id}`, `GET /savings-accounts/client/{clientId}`, `POST /savings-accounts/{id}/deposit`, `POST .../withdraw`, `POST .../transfer`, `GET .../transactions`, `POST .../close` |
 | Fixed deposits | `POST /fixed-deposits`, `GET /fixed-deposits/{id}`, `GET /fixed-deposits/client/{clientId}`, `POST /fixed-deposits/{id}/mature` |
 | Ledger | `GET /ledger/entries`, `GET /ledger/entries/{id}`, `GET /ledger/entries/reference/{reference}` |
 

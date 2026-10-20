@@ -116,13 +116,41 @@ public class InterestService {
     List<InterestAccrual> unpaid =
         interestAccrualRepository.findByAccountIdAndPostingReferenceIsNullAndAccrualDateBefore(
             accountId, monthStart);
+    // A month that rounds to zero is left unpaid and carried into the next.
+    return pay(account, unpaid, reference, "Interest for " + month, false);
+  }
+
+  /*
+   * Pays every day of interest recorded so far into an account that is being
+   * closed, whatever month it belongs to. The days are marked paid even when
+   * they round to zero, so nothing is left behind on the closed account.
+   */
+  @Transactional
+  public BigDecimal payOnClosure(Long accountId) {
+    SavingsAccount account = savingsAccountRepository.findByIdForUpdate(accountId).orElseThrow();
+    List<InterestAccrual> unpaid =
+        interestAccrualRepository.findByAccountIdAndPostingReferenceIsNull(accountId);
+    String reference = "INT-" + account.getAccountNumber() + "-CLOSE";
+    return pay(account, unpaid, reference, "Interest up to closure", true);
+  }
+
+  private BigDecimal pay(
+      SavingsAccount account,
+      List<InterestAccrual> unpaid,
+      String reference,
+      String description,
+      boolean settleEvenIfZero) {
     BigDecimal amount =
         unpaid.stream()
             .map(InterestAccrual::getAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add)
             .setScale(2, RoundingMode.HALF_UP);
     if (amount.signum() == 0) {
-      return BigDecimal.ZERO; // carried into next month
+      if (settleEvenIfZero) {
+        unpaid.forEach(accrual -> accrual.setPostingReference(reference));
+        interestAccrualRepository.saveAll(unpaid);
+      }
+      return BigDecimal.ZERO;
     }
 
     BigDecimal balanceBefore = account.getBalance();
@@ -131,7 +159,6 @@ public class InterestService {
     account.setAvailableBalance(newBalance);
     savingsAccountRepository.save(account);
 
-    String description = "Interest for " + month;
     SavingsTransaction transaction = new SavingsTransaction();
     transaction.setAccount(account);
     transaction.setTransactionType(TransactionType.INTEREST);
@@ -147,7 +174,7 @@ public class InterestService {
 
     ledgerPostingService.record(
         LEDGER_INTEREST, amount, reference, description + " - " + account.getAccountNumber());
-    log.info("Paid interest of {} into account {} for {}", amount, accountId, month);
+    log.info("Paid interest of {} into account {}: {}", amount, account.getId(), description);
     return amount;
   }
 
