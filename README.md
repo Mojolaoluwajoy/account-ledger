@@ -19,7 +19,10 @@ Clients are also created in [Apache Fineract](https://fineract.apache.org/)
 | `ledger-service` | Double-entry ledger (chart of accounts and entries) | 8084 |
 | `postgres` | One database per service | 5432 |
 
-Use the gateway (port 8090) for everything; the other ports are there for debugging.
+Use the gateway (port 8090) for everything. The other ports only accept
+connections from your own machine and are there for debugging; the gateway is
+the only way in from the network. The gateway also refuses the two endpoints
+that only the services call each other on (see [API](#api)).
 
 ## Running it
 
@@ -132,9 +135,10 @@ Full request and response details are in the Swagger UI.
 | Fixed deposits | `POST /fixed-deposits`, `GET /fixed-deposits/{id}`, `GET /fixed-deposits/client/{clientId}`, `POST /fixed-deposits/{id}/mature` |
 | Ledger | `GET /ledger/entries`, `GET /ledger/entries/{id}`, `GET /ledger/entries/reference/{reference}` |
 
-All paths start with `/api/v1`. Two endpoints are meant for the services
-themselves rather than people: `POST /ledger/entries` and
-`POST /savings-accounts/{id}/fixed-deposit-payouts`.
+All paths start with `/api/v1`. Two endpoints are only for the services to
+call each other, directly inside Docker: `POST /ledger/entries` and
+`POST /savings-accounts/{id}/fixed-deposit-payouts`. The gateway answers 404
+to both.
 
 **Pages.** `GET /clients`, `GET /ledger/entries` and
 `GET /savings-accounts/{id}/transactions` return one page at a time:
