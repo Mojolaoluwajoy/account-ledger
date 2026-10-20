@@ -200,6 +200,15 @@ class LedgerServiceTest {
     assertEquals("2001", response.getCreditAccountCode());
   }
 
+  @Test
+  void postEntry_savingsInterest_shouldDebitInterestExpenseAndCreditSavings() {
+    LedgerEntryResponse response =
+        postPayoutEntry(TransactionEntryType.SAVINGS_INTEREST, "5001", "INT-SAV1-2026-09");
+
+    assertEquals("5001", response.getDebitAccountCode());
+    assertEquals("2001", response.getCreditAccountCode());
+  }
+
   private LedgerEntryResponse postPayoutEntry(
       TransactionEntryType type, String debitCode, String reference) {
     GlAccount debitAccount = new GlAccount();

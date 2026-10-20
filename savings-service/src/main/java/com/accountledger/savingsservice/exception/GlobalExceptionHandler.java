@@ -102,6 +102,24 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(InvalidInterestRunException.class)
+  public ResponseEntity<ApiResponse<Object>> handleInvalidInterestRun(
+      InvalidInterestRunException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  @ExceptionHandler(InterestRunInProgressException.class)
+  public ResponseEntity<ApiResponse<Object>> handleInterestRunInProgress(
+      InterestRunInProgressException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  @ExceptionHandler(AccountHasBalanceException.class)
+  public ResponseEntity<ApiResponse<Object>> handleAccountHasBalance(
+      AccountHasBalanceException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<ApiResponse<Object>> handleUnreadableBody(
       HttpMessageNotReadableException ex) {

@@ -119,6 +119,20 @@ public class SavingsAccountController {
   }
 
   @Operation(
+      summary = "Close a savings account",
+      description =
+          "Pays interest earned up to yesterday, moves whatever is left to "
+              + "transferToAccountId (required if anything is left) and closes the account. "
+              + "A closed account takes no more money in or out.")
+  @PostMapping("/{accountId}/close")
+  public ResponseEntity<ApiResponse<CloseAccountResponse>> closeAccount(
+      @PathVariable Long accountId, @RequestBody(required = false) CloseAccountRequest request) {
+    log.info("Request received to close savings account ID: {}", accountId);
+    CloseAccountResponse response = savingsAccountService.closeAccount(accountId, request);
+    return ResponseEntity.ok(ApiResponse.success("Savings account closed", response));
+  }
+
+  @Operation(
       summary = "Get transaction history for a savings account",
       description =
           "Returns the transaction history, most recent first, one page at a time. "

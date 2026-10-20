@@ -87,6 +87,20 @@ curl "$G/ledger/entries?page=0&size=20"
 - **Failures.** A posting or payout the other service rejects outright (a 4xx
   answer) is marked `FAILED` with the reason, instead of being retried
   forever. See the admin endpoints below to list and retry them.
+- **Interest.** Every night (00:15) each active savings account earns
+  `end-of-day balance x annual rate / 365` for the day before, kept to 6
+  decimal places; nothing on a day it ends below the product's minimum
+  balance. On the 1st of the month the previous month's interest is added up,
+  rounded half-up to 2 places and paid into the account as one `INTEREST`
+  transaction (ledger: debit 5001 Interest Expense, credit 2001). A month that
+  rounds to 0.00 is carried into the next. Missed nights are caught up, and
+  running twice pays nothing twice.
+- **Closing an account.** `POST /savings-accounts/{id}/close` pays the
+  interest earned up to yesterday, moves whatever is left to
+  `{"transferToAccountId": 2}` (required if anything is left) and marks the
+  account `CLOSED`. A closed account takes no more money in or out, and earns
+  no interest. A fixed deposit payout due to a closed account fails and can be
+  retried into another account (see the admin endpoints).
 - **Concurrency.** Balance changes lock the account row; transfers lock both
   rows, lowest ID first. A request gives up with a 503 after waiting 3 seconds
   for a lock. Client updates can send back the `version` they were based on and
@@ -114,7 +128,7 @@ Full request and response details are in the Swagger UI.
 |---|---|
 | Clients | `POST /clients`, `GET /clients`, `GET /clients/{id}`, `PUT /clients/{id}` |
 | Savings products | `POST /savings-products`, `GET /savings-products`, `GET /savings-products/{id}` |
-| Savings accounts | `POST /savings-accounts`, `GET /savings-accounts/{id}`, `GET /savings-accounts/client/{clientId}`, `POST /savings-accounts/{id}/deposit`, `POST .../withdraw`, `POST .../transfer`, `GET .../transactions` |
+| Savings accounts | `POST /savings-accounts`, `GET /savings-accounts/{id}`, `GET /savings-accounts/client/{clientId}`, `POST /savings-accounts/{id}/deposit`, `POST .../withdraw`, `POST .../transfer`, `GET .../transactions`, `POST .../close` |
 | Fixed deposits | `POST /fixed-deposits`, `GET /fixed-deposits/{id}`, `GET /fixed-deposits/client/{clientId}`, `POST /fixed-deposits/{id}/mature` |
 | Ledger | `GET /ledger/entries`, `GET /ledger/entries/{id}`, `GET /ledger/entries/reference/{reference}` |
 
@@ -129,7 +143,7 @@ themselves rather than people: `POST /ledger/entries` and
 
 ### Admin endpoints
 
-For looking after failed postings and payouts:
+For looking after failed postings and payouts, and running interest:
 
 | Endpoint | What it does |
 |---|---|
@@ -139,6 +153,7 @@ For looking after failed postings and payouts:
 | `POST /admin/fixed-deposits/ledger-postings/{id}/retry` | The same for fixed deposit postings |
 | `GET /admin/fixed-deposits/payouts?status=FAILED` | Fixed deposits by payout status |
 | `POST /admin/fixed-deposits/{id}/payout/retry` | Put a `FAILED` payout back in the queue; optionally send `{"payoutAccountId": 3}` to pay into another active account of the same client |
+| `POST /admin/savings/interest/run?asOf=2026-11-01` | Run the nightly interest job now, as if today were `asOf` (default today; not in the future) |
 
 Fix whatever caused the failure before retrying, or it will fail again.
 
@@ -176,6 +191,5 @@ mvn spotless:apply   # fix formatting
 
 ## Not done yet
 
-- Savings interest is not calculated or paid, although products have a rate.
 - There is no authentication: anyone who can reach the gateway can call every
   endpoint, including the admin ones.

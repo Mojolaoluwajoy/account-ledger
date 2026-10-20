@@ -1,5 +1,7 @@
 package com.accountledger.savingsservice.service;
 
+import com.accountledger.savingsservice.dto.CloseAccountRequest;
+import com.accountledger.savingsservice.dto.CloseAccountResponse;
 import com.accountledger.savingsservice.dto.FixedDepositPayoutRequest;
 import com.accountledger.savingsservice.dto.OpenSavingsAccountRequest;
 import com.accountledger.savingsservice.dto.PageResponse;
@@ -14,6 +16,7 @@ import com.accountledger.savingsservice.entity.SavingsProduct;
 import com.accountledger.savingsservice.entity.SavingsTransaction;
 import com.accountledger.savingsservice.enums.SavingsAccountStatus;
 import com.accountledger.savingsservice.enums.TransactionType;
+import com.accountledger.savingsservice.exception.AccountHasBalanceException;
 import com.accountledger.savingsservice.exception.AccountNotActiveException;
 import com.accountledger.savingsservice.exception.AccountNotFoundException;
 import com.accountledger.savingsservice.exception.InsufficientBalanceException;
@@ -29,6 +32,7 @@ import com.accountledger.savingsservice.util.SavingsAccountMapper;
 import com.accountledger.savingsservice.util.SavingsTransactionMapper;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -56,6 +60,7 @@ public class SavingsAccountService {
   private final SavingsTransactionRepository savingsTransactionRepository;
   private final LedgerPostingService ledgerPostingService;
   private final ClientServiceClient clientServiceClient;
+  private final InterestService interestService;
 
   @Transactional
   public SavingsAccountResponse openAccount(OpenSavingsAccountRequest request) {
@@ -330,6 +335,104 @@ public class SavingsAccountService {
         "Fixed deposit payout {} credited. New balance: {}", request.getReference(), newBalance);
 
     return toTransactionResponse(accountId, transaction);
+  }
+
+  /*
+   * Closes a savings account. Interest earned up to yesterday is paid in
+   * first; whatever is then left is moved to transferToAccountId, which is
+   * required if anything is left. Everything happens in one transaction, so
+   * a refused closure changes nothing.
+   *
+   * A closed account takes no more deposits, withdrawals, transfers, interest
+   * or fixed deposit payouts. A payout already due to it fails and can be
+   * retried into another account through the admin endpoints.
+   */
+  @Transactional
+  public CloseAccountResponse closeAccount(Long accountId, CloseAccountRequest request) {
+    Long destinationId = request == null ? null : request.getTransferToAccountId();
+    log.info("Closing savings account ID: {}", accountId);
+
+    if (accountId.equals(destinationId)) {
+      throw new InvalidTransferException("Cannot move the balance into the account being closed");
+    }
+
+    // Lowest ID first, as for transfers, so this cannot deadlock with one.
+    SavingsAccount account;
+    SavingsAccount destination = null;
+    if (destinationId == null) {
+      account = lockAccount(accountId);
+    } else if (accountId < destinationId) {
+      account = lockAccount(accountId);
+      destination = lockAccount(destinationId);
+    } else {
+      destination = lockAccount(destinationId);
+      account = lockAccount(accountId);
+    }
+
+    validateAccountIsActive(account);
+    if (destination != null) {
+      validateAccountIsActive(destination);
+    }
+
+    interestService.accrue(accountId, LocalDate.now().minusDays(1));
+    BigDecimal interestPaid = interestService.payOnClosure(accountId);
+
+    BigDecimal remaining = account.getBalance();
+    BigDecimal transferred = BigDecimal.ZERO;
+    if (remaining.signum() > 0) {
+      if (destination == null) {
+        throw new AccountHasBalanceException(
+            "Account "
+                + account.getAccountNumber()
+                + " still holds "
+                + remaining
+                + ". Withdraw it first, or give transferToAccountId to move it on closure.");
+      }
+
+      BigDecimal destinationBalanceBefore = destination.getBalance();
+      BigDecimal destinationBalanceAfter = destinationBalanceBefore.add(remaining);
+      destination.setBalance(destinationBalanceAfter);
+      destination.setAvailableBalance(destinationBalanceAfter);
+      savingsAccountRepository.save(destination);
+
+      account.setBalance(BigDecimal.ZERO);
+      account.setAvailableBalance(BigDecimal.ZERO);
+
+      saveTransaction(
+          account,
+          TransactionType.TRANSFER_OUT,
+          remaining,
+          remaining,
+          BigDecimal.ZERO,
+          "Balance on closure to " + destination.getAccountNumber(),
+          null);
+      saveTransaction(
+          destination,
+          TransactionType.TRANSFER_IN,
+          remaining,
+          destinationBalanceBefore,
+          destinationBalanceAfter,
+          "Balance on closure of " + account.getAccountNumber(),
+          null);
+      transferred = remaining;
+    }
+
+    account.setStatus(SavingsAccountStatus.CLOSED);
+    account.setClosedAt(LocalDateTime.now());
+    savingsAccountRepository.save(account);
+    log.info(
+        "Savings account {} closed; interest paid {}, {} moved to {}",
+        account.getAccountNumber(),
+        interestPaid,
+        transferred,
+        destination == null ? "nowhere" : destination.getAccountNumber());
+
+    return CloseAccountResponse.builder()
+        .account(SavingsAccountMapper.toResponse(account))
+        .interestPaid(interestPaid)
+        .balanceTransferred(transferred)
+        .transferredToAccountId(destination == null ? null : destination.getId())
+        .build();
   }
 
   public List<SavingsAccountResponse> getAccountsByClientId(Long clientId) {
