@@ -26,4 +26,6 @@ public class FixedDepositResponse {
   private PayoutStatus payoutStatus;
   private String payoutError;
   private LocalDateTime paidOutAt;
+  private BigDecimal payoutInterest;
+  private LocalDate closedOn;
 }
