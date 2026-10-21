@@ -25,6 +25,7 @@ public class SavingsAccountMapper {
         .availableBalance(account.getAvailableBalance())
         .status(account.getStatus())
         .createdAt(account.getCreatedAt())
+        .closedAt(account.getClosedAt())
         .build();
   }
 

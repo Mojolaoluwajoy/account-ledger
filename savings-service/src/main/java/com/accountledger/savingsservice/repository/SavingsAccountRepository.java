@@ -30,4 +30,7 @@ public interface SavingsAccountRepository extends JpaRepository<SavingsAccount, 
   boolean existsByAccountNumber(String accountNumber);
 
   List<SavingsAccount> findByClientIdAndStatus(Long clientId, SavingsAccountStatus status);
+
+  @Query("select a.id from SavingsAccount a where a.status = :status order by a.id")
+  List<Long> findIdsByStatus(@Param("status") SavingsAccountStatus status);
 }

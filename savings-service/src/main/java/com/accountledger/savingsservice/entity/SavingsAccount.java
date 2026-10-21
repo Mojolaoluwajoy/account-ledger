@@ -41,4 +41,6 @@ public class SavingsAccount {
 
   @Column(nullable = false, updatable = false)
   private LocalDateTime createdAt = LocalDateTime.now();
+
+  private LocalDateTime closedAt;
 }

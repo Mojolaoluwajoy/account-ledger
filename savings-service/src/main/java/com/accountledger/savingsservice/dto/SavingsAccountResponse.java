@@ -18,4 +18,5 @@ public class SavingsAccountResponse {
   private BigDecimal availableBalance;
   private SavingsAccountStatus status;
   private LocalDateTime createdAt;
+  private LocalDateTime closedAt;
 }

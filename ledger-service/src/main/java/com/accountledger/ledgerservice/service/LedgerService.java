@@ -84,6 +84,12 @@ public class LedgerService {
         debitAccountCode = "5001";
         creditAccountCode = "2001";
       }
+      // Monthly interest paid into a savings account: an expense, owed to
+      // the customer as savings.
+      case SAVINGS_INTEREST -> {
+        debitAccountCode = "5001";
+        creditAccountCode = "2001";
+      }
       default ->
           throw new IllegalArgumentException(
               "Unknown transaction type: " + request.getTransactionType());
