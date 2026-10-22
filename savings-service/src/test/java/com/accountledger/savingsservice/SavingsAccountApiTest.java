@@ -100,6 +100,35 @@ class SavingsAccountApiTest {
   }
 
   @Test
+  void amountWithMoreThanTwoDecimals_shouldBeRefusedWithoutRecordingAnything() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/savings-accounts")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"clientId\": 1, \"productId\": "
+                        + productId
+                        + ", \"initialDeposit\": 250.00}"))
+        .andExpect(status().isCreated());
+    SavingsAccount account = savingsAccountRepository.findAll().get(0);
+
+    mockMvc
+        .perform(
+            post("/api/v1/savings-accounts/" + account.getId() + "/deposit")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\": 0.001}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.success").value(false));
+
+    assertEquals(1, savingsTransactionRepository.count());
+    assertEquals(1, ledgerPostingRepository.count());
+    assertEquals(
+        0,
+        new BigDecimal("250.00")
+            .compareTo(savingsAccountRepository.findById(account.getId()).get().getBalance()));
+  }
+
+  @Test
   void malformedJson_shouldReturn400() throws Exception {
     mockMvc
         .perform(
