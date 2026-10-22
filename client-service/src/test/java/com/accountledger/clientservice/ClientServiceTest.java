@@ -354,4 +354,35 @@ public class ClientServiceTest {
     assertEquals(ClientStatus.ACTIVE, savedClient.getStatus());
     verify(clientRepository).save(savedClient);
   }
+
+  @Test
+  void retryPendingFineractSync_whenRenamedWhileBeingCreated_shouldLinkCurrentVersionAndPushIt() {
+    savedClient.setStatus(ClientStatus.PENDING);
+    Client renamed = new Client();
+    renamed.setId(1L);
+    renamed.setFirstName("Janet");
+    renamed.setLastName("Doe");
+    renamed.setEmail("janedoe@gmail.com");
+    renamed.setPhoneNumber("08142988584");
+    renamed.setStatus(ClientStatus.PENDING);
+    FineractClientResponse fineractResponse = new FineractClientResponse();
+    fineractResponse.setClientId(42L);
+    when(clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING))
+        .thenReturn(List.of(savedClient));
+    when(fineractClient.createClient(any(FineractCreateClientRequest.class)))
+        .thenReturn(fineractResponse);
+    when(clientRepository.save(savedClient))
+        .thenThrow(new ObjectOptimisticLockingFailureException(Client.class, 1L));
+    when(clientRepository.findById(1L)).thenReturn(Optional.of(renamed));
+
+    clientService.retryPendingFineractSync();
+
+    // Linked to the record just created, not left PENDING to be refused as
+    // somebody else's on the next run.
+    assertEquals(42L, renamed.getFineractClientId());
+    assertEquals(ClientStatus.ACTIVE, renamed.getStatus());
+    assertTrue(renamed.isFineractSyncPending());
+    assertNull(renamed.getFineractSyncError());
+    verify(clientRepository).save(renamed);
+  }
 }
