@@ -87,6 +87,11 @@ curl "$G/ledger/entries?page=0&size=20"
 - **Fixed deposit payouts.** Maturing a deposit marks its payout `PENDING`. A
   background job credits principal and interest to the payout account through
   savings-service and marks it `PAID`. A payout is credited at most once.
+- **Withdrawing a fixed deposit early.** `POST /fixed-deposits/{id}/withdraw-early`
+  ends a deposit before its maturity date (status `CLOSED_EARLY`). Interest
+  is paid for the days actually held, at the agreed rate minus a 2-point
+  penalty (`fixed-deposit.early-withdrawal.penalty-rate`), never below zero,
+  and the money is paid into the payout account the same way as at maturity.
 - **Failures.** A posting or payout the other service rejects outright (a 4xx
   answer) is marked `FAILED` with the reason, instead of being retried
   forever. See the admin endpoints below to list and retry them.
@@ -132,7 +137,7 @@ Full request and response details are in the Swagger UI.
 | Clients | `POST /clients`, `GET /clients`, `GET /clients/{id}`, `PUT /clients/{id}` |
 | Savings products | `POST /savings-products`, `GET /savings-products`, `GET /savings-products/{id}` |
 | Savings accounts | `POST /savings-accounts`, `GET /savings-accounts/{id}`, `GET /savings-accounts/client/{clientId}`, `POST /savings-accounts/{id}/deposit`, `POST .../withdraw`, `POST .../transfer`, `GET .../transactions`, `POST .../close` |
-| Fixed deposits | `POST /fixed-deposits`, `GET /fixed-deposits/{id}`, `GET /fixed-deposits/client/{clientId}`, `POST /fixed-deposits/{id}/mature` |
+| Fixed deposits | `POST /fixed-deposits`, `GET /fixed-deposits/{id}`, `GET /fixed-deposits/client/{clientId}`, `POST /fixed-deposits/{id}/mature`, `POST /fixed-deposits/{id}/withdraw-early` |
 | Ledger | `GET /ledger/entries`, `GET /ledger/entries/{id}`, `GET /ledger/entries/reference/{reference}` |
 
 All paths start with `/api/v1`. Two endpoints are only for the services to

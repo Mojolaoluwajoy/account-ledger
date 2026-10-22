@@ -1,21 +1,27 @@
 package com.accountledger.fixeddepositservice;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.accountledger.fixeddepositservice.dto.SavingsAccountLookupResponse;
+import com.accountledger.fixeddepositservice.entity.FixedDeposit;
 import com.accountledger.fixeddepositservice.exception.InvalidPayoutAccountException;
 import com.accountledger.fixeddepositservice.exception.SavingsServiceUnavailableException;
 import com.accountledger.fixeddepositservice.feign.SavingsServiceApi;
 import com.accountledger.fixeddepositservice.util.SavingsServiceClient;
 import feign.FeignException;
 import feign.Request;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -81,6 +87,40 @@ class SavingsServiceClientTest {
     assertThrows(
         SavingsServiceUnavailableException.class,
         () -> savingsServiceClient.requirePayoutAccount(5L, 1L));
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  void payOut_shouldSendTheInterestActuallyDue() {
+    FixedDeposit deposit = new FixedDeposit();
+    deposit.setId(9L);
+    deposit.setPayoutAccountId(5L);
+    deposit.setPrincipalAmount(new BigDecimal("10000.00"));
+    deposit.setMaturityAmount(new BigDecimal("10591.78"));
+    deposit.setPayoutInterest(new BigDecimal("200.00"));
+
+    savingsServiceClient.payOut(deposit);
+
+    ArgumentCaptor<Map<String, Object>> sent = ArgumentCaptor.forClass(Map.class);
+    verify(savingsServiceApi).creditFixedDepositPayout(eq(5L), sent.capture());
+    assertEquals(new BigDecimal("200.00"), sent.getValue().get("interest"));
+    assertEquals("FD-PAYOUT-9", sent.getValue().get("reference"));
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  void payOut_forDepositEndedBeforeInterestWasRecorded_shouldSendFullInterest() {
+    FixedDeposit deposit = new FixedDeposit();
+    deposit.setId(9L);
+    deposit.setPayoutAccountId(5L);
+    deposit.setPrincipalAmount(new BigDecimal("10000.00"));
+    deposit.setMaturityAmount(new BigDecimal("10591.78"));
+
+    savingsServiceClient.payOut(deposit);
+
+    ArgumentCaptor<Map<String, Object>> sent = ArgumentCaptor.forClass(Map.class);
+    verify(savingsServiceApi).creditFixedDepositPayout(eq(5L), sent.capture());
+    assertEquals(new BigDecimal("591.78"), sent.getValue().get("interest"));
   }
 
   private SavingsAccountLookupResponse account(Long clientId, String status) {
