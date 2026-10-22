@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -24,15 +25,25 @@ public class SavingsProductService {
     log.info("Creating savings product with short name: {}", request.getShortName());
 
     if (savingsProductRepository.existsByShortName(request.getShortName())) {
-      throw new DuplicateProductException(
-          "Savings product with short name " + request.getShortName() + " already exists");
+      throw duplicateShortName(request);
     }
 
-    SavingsProduct savedProduct =
-        savingsProductRepository.save(SavingsProductMapper.toEntity(request));
+    SavingsProduct savedProduct;
+    try {
+      savedProduct = savingsProductRepository.save(SavingsProductMapper.toEntity(request));
+    } catch (DataIntegrityViolationException e) {
+      // Another request created a product with the same short name between
+      // our check and the insert.
+      throw duplicateShortName(request);
+    }
 
     log.info("Savings product created successfully with ID: {}", savedProduct.getId());
     return SavingsProductMapper.toResponse(savedProduct);
+  }
+
+  private DuplicateProductException duplicateShortName(CreateSavingsProductRequest request) {
+    return new DuplicateProductException(
+        "Savings product with short name " + request.getShortName() + " already exists");
   }
 
   public SavingsProductResponse getProductById(Long id) {

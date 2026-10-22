@@ -24,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class SavingsProductServiceTest {
@@ -81,6 +82,16 @@ class SavingsProductServiceTest {
         });
 
     verify(savingsProductRepository, never()).save(any(SavingsProduct.class));
+  }
+
+  @Test
+  void createProduct_whenShortNameTakenConcurrently_shouldThrowDuplicateProductException() {
+    when(savingsProductRepository.existsByShortName(validRequest.getShortName())).thenReturn(false);
+    when(savingsProductRepository.save(any(SavingsProduct.class)))
+        .thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+    assertThrows(
+        DuplicateProductException.class, () -> savingsProductService.createProduct(validRequest));
   }
 
   @Test
