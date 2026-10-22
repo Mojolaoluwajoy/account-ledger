@@ -48,10 +48,14 @@ public class InterestService {
    * the day the account was opened) up to and including lastDay. Days already
    * recorded are skipped, so missed runs are caught up and repeated runs
    * change nothing. Returns how many days were recorded.
+   *
+   * The account is locked so the nightly job and a closure cannot both record
+   * the same day: whichever comes second waits, then sees the days the other
+   * recorded (or that the account is now closed).
    */
   @Transactional
   public int accrue(Long accountId, LocalDate lastDay) {
-    SavingsAccount account = savingsAccountRepository.findById(accountId).orElseThrow();
+    SavingsAccount account = savingsAccountRepository.findByIdForUpdate(accountId).orElseThrow();
     if (account.getStatus() != SavingsAccountStatus.ACTIVE) {
       return 0;
     }
