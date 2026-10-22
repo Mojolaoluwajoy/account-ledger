@@ -62,6 +62,20 @@ public class FixedDepositController {
   }
 
   @Operation(
+      summary = "Withdraw a fixed deposit early",
+      description =
+          "Ends the deposit before its maturity date. Interest is paid for the days held, "
+              + "at the agreed rate minus the early withdrawal penalty (2 points by default), "
+              + "into the deposit's payout account.")
+  @PostMapping("/{depositId}/withdraw-early")
+  public ResponseEntity<ApiResponse<FixedDepositResponse>> withdrawEarly(
+      @PathVariable Long depositId) {
+    log.info("Request received to withdraw fixed deposit {} early", depositId);
+    FixedDepositResponse response = fixedDepositService.withdrawEarly(depositId);
+    return ResponseEntity.ok(ApiResponse.success("Fixed deposit withdrawn early", response));
+  }
+
+  @Operation(
       summary = "Mature a fixed deposit",
       description =
           "Processes the maturity of a fixed deposit. "

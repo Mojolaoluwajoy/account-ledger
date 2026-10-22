@@ -182,4 +182,84 @@ class FixedDepositServiceTest {
     verify(fixedDepositRepository, never()).save(any(FixedDeposit.class));
     verify(ledgerPostingService, never()).record(anyString(), any(), anyString(), anyString());
   }
+
+  @Test
+  void withdrawEarly_withPayoutAccount_shouldPayReducedInterestIntoAccount() {
+    // 12% minus the 2-point penalty = 10%, for 73 of 180 days: 10,000 x 10% x 73/365 = 200.00
+    heldFor(73);
+    savedDeposit.setPayoutAccountId(5L);
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
+    when(fixedDepositRepository.save(any(FixedDeposit.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    FixedDepositResponse response = fixedDepositService.withdrawEarly(1L);
+
+    assertEquals(FixedDepositStatus.CLOSED_EARLY, response.getStatus());
+    assertEquals(LocalDate.now(), response.getClosedOn());
+    assertEquals(new BigDecimal("200.00"), response.getPayoutInterest());
+    assertEquals(PayoutStatus.PENDING, response.getPayoutStatus());
+    verify(ledgerPostingService, never()).record(anyString(), any(), anyString(), anyString());
+  }
+
+  @Test
+  void withdrawEarly_withRateBelowPenalty_shouldPayNoInterest() {
+    heldFor(73);
+    savedDeposit.setInterestRate(new BigDecimal("1.50"));
+    savedDeposit.setPayoutAccountId(5L);
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
+    when(fixedDepositRepository.save(any(FixedDeposit.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    FixedDepositResponse response = fixedDepositService.withdrawEarly(1L);
+
+    assertEquals(0, BigDecimal.ZERO.compareTo(response.getPayoutInterest()));
+  }
+
+  @Test
+  void withdrawEarly_withoutPayoutAccount_shouldPayOutInCash() {
+    heldFor(73);
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
+    when(fixedDepositRepository.save(any(FixedDeposit.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    fixedDepositService.withdrawEarly(1L);
+
+    verify(ledgerPostingService)
+        .record(
+            eq("FIXED_DEPOSIT_MATURITY"),
+            eq(new BigDecimal("10000.00")),
+            eq("FD-MAT-1"),
+            anyString());
+    verify(ledgerPostingService)
+        .record(
+            eq("FIXED_DEPOSIT_INTEREST"),
+            eq(new BigDecimal("200.00")),
+            eq("FD-INT-1"),
+            anyString());
+  }
+
+  @Test
+  void withdrawEarly_onMaturityDate_shouldBeRefused() {
+    savedDeposit.setDepositDate(LocalDate.now().minusDays(180));
+    savedDeposit.setMaturityDate(LocalDate.now());
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
+
+    assertThrows(FixedDepositNotActiveException.class, () -> fixedDepositService.withdrawEarly(1L));
+
+    verify(fixedDepositRepository, never()).save(any(FixedDeposit.class));
+  }
+
+  @Test
+  void withdrawEarly_alreadyEnded_shouldBeRefused() {
+    heldFor(73);
+    savedDeposit.setStatus(FixedDepositStatus.MATURED);
+    when(fixedDepositRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(savedDeposit));
+
+    assertThrows(FixedDepositNotActiveException.class, () -> fixedDepositService.withdrawEarly(1L));
+  }
+
+  private void heldFor(int days) {
+    savedDeposit.setDepositDate(LocalDate.now().minusDays(days));
+    savedDeposit.setMaturityDate(LocalDate.now().minusDays(days).plusDays(180));
+  }
 }

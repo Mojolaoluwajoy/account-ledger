@@ -15,10 +15,12 @@ import com.accountledger.fixeddepositservice.util.SavingsServiceClient;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,10 @@ public class FixedDepositService {
   private final LedgerPostingService ledgerPostingService;
   private final ClientServiceClient clientServiceClient;
   private final SavingsServiceClient savingsServiceClient;
+
+  /* Percentage points taken off the agreed rate when a deposit is withdrawn early. */
+  @Value("${fixed-deposit.early-withdrawal.penalty-rate:2.00}")
+  private BigDecimal earlyWithdrawalPenaltyRate = new BigDecimal("2.00");
 
   @Transactional
   public FixedDepositResponse createFixedDeposit(CreateFixedDepositRequest request) {
@@ -97,50 +103,107 @@ public class FixedDepositService {
               + " cannot be matured before "
               + deposit.getMaturityDate()
               + ". Today is "
-              + LocalDate.now());
+              + LocalDate.now()
+              + ". Use withdraw-early to end it now with reduced interest.");
     }
 
     deposit.setStatus(FixedDepositStatus.MATURED);
+    BigDecimal interest = deposit.getMaturityAmount().subtract(deposit.getPrincipalAmount());
+    log.info("Fixed deposit {} matured", depositId);
+    return FixedDepositMapper.toResponse(payOut(deposit, interest));
+  }
 
-    // The money goes into the payout account. FixedDepositPayoutService sends
-    // it shortly after this commits, and the savings service posts the ledger
-    // entries when it credits the account.
+  /*
+   * Withdraws a deposit before its maturity date. Interest is paid for the
+   * days actually held, at the agreed rate minus the early withdrawal penalty
+   * (never below zero), and the deposit is paid out like a matured one.
+   */
+  @Transactional
+  public FixedDepositResponse withdrawEarly(Long depositId) {
+    log.info("Processing early withdrawal for deposit ID: {}", depositId);
+
+    FixedDeposit deposit =
+        fixedDepositRepository
+            .findByIdForUpdate(depositId)
+            .orElseThrow(
+                () ->
+                    new FixedDepositNotFoundException(
+                        "Fixed deposit not found with ID: " + depositId));
+
+    if (deposit.getStatus() != FixedDepositStatus.ACTIVE) {
+      throw new FixedDepositNotActiveException(
+          "Fixed deposit "
+              + depositId
+              + " cannot be withdrawn. Current status: "
+              + deposit.getStatus());
+    }
+
+    LocalDate today = LocalDate.now();
+    if (!today.isBefore(deposit.getMaturityDate())) {
+      throw new FixedDepositNotActiveException(
+          "Fixed deposit "
+              + depositId
+              + " has reached its maturity date ("
+              + deposit.getMaturityDate()
+              + "). Mature it instead to receive the full interest.");
+    }
+
+    BigDecimal reducedRate =
+        deposit.getInterestRate().subtract(earlyWithdrawalPenaltyRate).max(BigDecimal.ZERO);
+    int daysHeld = (int) ChronoUnit.DAYS.between(deposit.getDepositDate(), today);
+    BigDecimal interest =
+        calculateMaturityAmount(deposit.getPrincipalAmount(), reducedRate, daysHeld)
+            .subtract(deposit.getPrincipalAmount());
+
+    deposit.setStatus(FixedDepositStatus.CLOSED_EARLY);
+    deposit.setClosedOn(today);
+    log.info(
+        "Fixed deposit {} withdrawn early after {} days: interest {} at {}% instead of {}%",
+        depositId, daysHeld, interest, reducedRate, deposit.getInterestRate());
+    return FixedDepositMapper.toResponse(payOut(deposit, interest));
+  }
+
+  /*
+   * Pays principal and interest out of a deposit that has ended. With a
+   * payout account the money goes there: FixedDepositPayoutService sends it
+   * shortly after this commits, and the savings service posts the ledger
+   * entries when it credits the account.
+   */
+  private FixedDeposit payOut(FixedDeposit deposit, BigDecimal interest) {
+    deposit.setPayoutInterest(interest);
+
     if (deposit.getPayoutAccountId() != null) {
       deposit.setPayoutStatus(PayoutStatus.PENDING);
-      FixedDeposit maturedDeposit = fixedDepositRepository.save(deposit);
       log.info(
-          "Fixed deposit {} matured, paying into savings account {}",
-          depositId,
+          "Paying fixed deposit {} into savings account {}",
+          deposit.getId(),
           deposit.getPayoutAccountId());
-      return FixedDepositMapper.toResponse(maturedDeposit);
+      return fixedDepositRepository.save(deposit);
     }
 
     // Deposits created before payouts existed have no payout account and are
     // paid out in cash, as they always were.
-    FixedDeposit maturedDeposit = fixedDepositRepository.save(deposit);
-    log.info("Fixed deposit {} matured and paid out in cash", depositId);
+    FixedDeposit saved = fixedDepositRepository.save(deposit);
+    log.info("Fixed deposit {} paid out in cash", deposit.getId());
 
     // Principal and interest are posted separately: repaying principal settles
     // what we owed the customer, while the interest is an expense.
-    String principalReference = "FD-MAT-" + depositId;
+    String principalReference = "FD-MAT-" + deposit.getId();
     ledgerPostingService.record(
         "FIXED_DEPOSIT_MATURITY",
-        maturedDeposit.getPrincipalAmount(),
+        saved.getPrincipalAmount(),
         principalReference,
-        "Fixed deposit maturity (principal) - " + principalReference);
+        "Fixed deposit payout (principal) - " + principalReference);
 
-    BigDecimal interest =
-        maturedDeposit.getMaturityAmount().subtract(maturedDeposit.getPrincipalAmount());
     if (interest.compareTo(BigDecimal.ZERO) > 0) {
-      String interestReference = "FD-INT-" + depositId;
+      String interestReference = "FD-INT-" + deposit.getId();
       ledgerPostingService.record(
           "FIXED_DEPOSIT_INTEREST",
           interest,
           interestReference,
-          "Fixed deposit maturity (interest) - " + interestReference);
+          "Fixed deposit payout (interest) - " + interestReference);
     }
-
-    return FixedDepositMapper.toResponse(maturedDeposit);
+    return saved;
   }
 
   public FixedDepositResponse getDepositById(Long depositId) {

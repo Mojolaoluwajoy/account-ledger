@@ -6,6 +6,7 @@ import com.accountledger.fixeddepositservice.exception.InvalidPayoutAccountExcep
 import com.accountledger.fixeddepositservice.exception.SavingsServiceUnavailableException;
 import com.accountledger.fixeddepositservice.feign.SavingsServiceApi;
 import feign.FeignException;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -62,9 +63,16 @@ public class SavingsServiceClient {
     Map<String, Object> request = new HashMap<>();
     request.put("reference", payoutReference(deposit));
     request.put("principal", deposit.getPrincipalAmount());
-    request.put("interest", deposit.getMaturityAmount().subtract(deposit.getPrincipalAmount()));
+    request.put("interest", interestToPay(deposit));
 
     savingsServiceApi.creditFixedDepositPayout(deposit.getPayoutAccountId(), request);
+  }
+
+  /* Deposits that ended before payoutInterest was recorded were all paid in full. */
+  private static BigDecimal interestToPay(FixedDeposit deposit) {
+    return deposit.getPayoutInterest() != null
+        ? deposit.getPayoutInterest()
+        : deposit.getMaturityAmount().subtract(deposit.getPrincipalAmount());
   }
 
   public static String payoutReference(FixedDeposit deposit) {

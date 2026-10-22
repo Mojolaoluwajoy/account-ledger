@@ -66,4 +66,13 @@ public class FixedDeposit {
   private String payoutError;
 
   private LocalDateTime paidOutAt;
+
+  /*
+   * The interest actually paid: the agreed interest at maturity, or less when
+   * withdrawn early. Empty for deposits that ended before this was recorded.
+   */
+  private BigDecimal payoutInterest;
+
+  /* The day the deposit was withdrawn early. */
+  private LocalDate closedOn;
 }
