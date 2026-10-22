@@ -1,6 +1,8 @@
 package com.accountledger.savingsservice;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.accountledger.savingsservice.util.RemoteErrors;
 import feign.FeignException;
@@ -60,5 +62,26 @@ class RemoteErrorsTest {
     assertEquals(
         "ledger down",
         RemoteErrors.describe("Ledger service", new RuntimeException("ledger down")));
+  }
+
+  @Test
+  void isPermanent_shouldBeTrueOnlyForClientErrorsThatWouldRepeat() {
+    assertTrue(
+        RemoteErrors.isPermanent(
+            new FeignException.BadRequest("Bad Request", REQUEST, null, Map.of())));
+    assertTrue(
+        RemoteErrors.isPermanent(new FeignException.Conflict("Conflict", REQUEST, null, Map.of())));
+
+    assertFalse(
+        RemoteErrors.isPermanent(
+            new FeignException.FeignClientException(
+                408, "Request Timeout", REQUEST, null, Map.of())));
+    assertFalse(
+        RemoteErrors.isPermanent(
+            new FeignException.TooManyRequests("Too Many Requests", REQUEST, null, Map.of())));
+    assertFalse(
+        RemoteErrors.isPermanent(
+            new FeignException.BadGateway("Bad Gateway", REQUEST, null, Map.of())));
+    assertFalse(RemoteErrors.isPermanent(new RuntimeException("ledger down")));
   }
 }

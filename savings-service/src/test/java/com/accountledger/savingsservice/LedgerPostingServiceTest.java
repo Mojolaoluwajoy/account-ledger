@@ -93,4 +93,25 @@ class LedgerPostingServiceTest {
         "Ledger service answered 400: Unknown transaction type: TEST_TYPE", posting.getLastError());
     verify(ledgerPostingRepository).save(posting);
   }
+
+  @Test
+  void publishPending_whenLedgerSaysTooManyRequests_shouldStayPendingForRetry() {
+    Request request =
+        Request.create(
+            Request.HttpMethod.POST,
+            "http://localhost:8084/api/v1/ledger/entries",
+            Map.of(),
+            null,
+            StandardCharsets.UTF_8,
+            null);
+    doThrow(new FeignException.TooManyRequests("Too Many Requests", request, null, Map.of()))
+        .when(ledgerClient)
+        .post(posting);
+
+    ledgerPostingService.publishPending();
+
+    assertEquals(LedgerPostingStatus.PENDING, posting.getStatus());
+    assertEquals(1, posting.getAttempts());
+    verify(ledgerPostingRepository).save(posting);
+  }
 }
