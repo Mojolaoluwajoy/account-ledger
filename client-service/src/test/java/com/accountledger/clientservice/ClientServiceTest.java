@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -128,6 +129,30 @@ public class ClientServiceTest {
         });
 
     verify(clientRepository, never()).save(any(Client.class));
+  }
+
+  @Test
+  void createClient_withDuplicateEmailInDifferentCase_shouldThrowException() {
+    validRequest.setEmail(" JaneDoe@Gmail.COM ");
+    when(clientRepository.existsByEmail("janedoe@gmail.com")).thenReturn(true);
+
+    assertThrows(DuplicateEmailException.class, () -> clientService.createClient(validRequest));
+
+    verify(clientRepository, never()).save(any(Client.class));
+  }
+
+  @Test
+  void createClient_shouldStoreEmailLowerCased() {
+    validRequest.setEmail("JaneDoe@Gmail.com");
+    when(clientRepository.existsByEmail("janedoe@gmail.com")).thenReturn(false);
+    when(clientRepository.existsByPhoneNumber(validRequest.getPhoneNumber())).thenReturn(false);
+    when(clientRepository.save(any(Client.class))).thenReturn(savedClient);
+
+    clientService.createClient(validRequest);
+
+    ArgumentCaptor<Client> stored = ArgumentCaptor.forClass(Client.class);
+    verify(clientRepository, atLeastOnce()).save(stored.capture());
+    assertEquals("janedoe@gmail.com", stored.getAllValues().get(0).getEmail());
   }
 
   @Test
