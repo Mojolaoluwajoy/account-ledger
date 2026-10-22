@@ -6,6 +6,7 @@ import com.accountledger.ledgerservice.dto.PostLedgerEntryRequest;
 import com.accountledger.ledgerservice.entity.*;
 import com.accountledger.ledgerservice.exception.GlAccountNotFoundException;
 import com.accountledger.ledgerservice.exception.LedgerEntryNotFoundException;
+import com.accountledger.ledgerservice.exception.ReferenceConflictException;
 import com.accountledger.ledgerservice.repository.GlAccountRepository;
 import com.accountledger.ledgerservice.repository.LedgerEntryRepository;
 import com.accountledger.ledgerservice.util.LedgerEntryMapper;
@@ -34,12 +35,25 @@ public class LedgerService {
 
     /*
      * Callers retry when they are unsure a posting went through, so the same
-     * reference must never create a second entry.
+     * reference must never create a second entry. A retry carries the same
+     * type and amount; a reference reused for a different posting is refused
+     * rather than answered as if it had been posted.
      */
     if (request.getTransactionReference() != null) {
       Optional<LedgerEntry> existing =
           ledgerEntryRepository.findFirstByTransactionReference(request.getTransactionReference());
       if (existing.isPresent()) {
+        LedgerEntry posted = existing.get();
+        if (posted.getTransactionType() != request.getTransactionType()
+            || posted.getAmount().compareTo(request.getAmount()) != 0) {
+          throw new ReferenceConflictException(
+              "Reference "
+                  + request.getTransactionReference()
+                  + " was already posted as "
+                  + posted.getTransactionType()
+                  + " of "
+                  + posted.getAmount());
+        }
         log.info(
             "Ledger entry already posted for reference: {}", request.getTransactionReference());
         return LedgerEntryMapper.toResponse(existing.get());
