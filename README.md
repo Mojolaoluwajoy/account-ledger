@@ -84,6 +84,10 @@ curl "$G/ledger/entries?page=0&size=20"
   sends the posting to the ledger service every few seconds. If the ledger
   service is down, postings wait and are retried; the ledger ignores a
   reference it has already posted, so nothing is posted twice.
+- **Fixed deposit maturity.** Every night (00:30) each active deposit whose
+  maturity date has come is matured, exactly as `POST /fixed-deposits/{id}/mature`
+  would; that endpoint still works for maturing one by hand. A deposit that
+  fails stays `ACTIVE` and is tried again the next night.
 - **Fixed deposit payouts.** Maturing a deposit marks its payout `PENDING`. A
   background job credits principal and interest to the payout account through
   savings-service and marks it `PAID`. A payout is credited at most once.
