@@ -2,6 +2,7 @@ package com.accountledger.clientservice.dto;
 
 import jakarta.validation.constraints.*;
 import java.time.LocalDate;
+import java.util.Locale;
 import lombok.Data;
 
 @Data
@@ -22,4 +23,13 @@ public class CreateClientRequest {
 
   @Past(message = "Date of birth must be in the past")
   private LocalDate dateOfBirth;
+
+  /*
+   * Emails are stored lower-cased so Jane@Gmail.com and jane@gmail.com count
+   * as the same address, both in the duplicate checks and in the database's
+   * unique constraint.
+   */
+  public void setEmail(String email) {
+    this.email = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+  }
 }
