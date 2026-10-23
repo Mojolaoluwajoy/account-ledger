@@ -145,7 +145,11 @@ public class ClientService {
       client.setStatus(ClientStatus.ACTIVE);
       client.setFineractSyncPending(false);
       client.setFineractSyncError(null);
-      clientRepository.save(client);
+      try {
+        clientRepository.save(client);
+      } catch (OptimisticLockingFailureException conflict) {
+        linkChangedClient(client.getId(), fineractClientId);
+      }
 
       log.info("Client {} linked to Fineract client {}", client.getId(), fineractClientId);
 
@@ -153,6 +157,26 @@ public class ClientService {
       log.error("Failed to create client {} in Fineract, will retry later", client.getId(), e);
       recordSyncError(client, e);
     }
+  }
+
+  /*
+   * The client was changed while we were creating it in Fineract, so our copy
+   * cannot be saved. The Fineract record exists by now, so the current
+   * version is linked to it and its newer details are marked to be pushed.
+   * Leaving it unlinked would make the next retry find our own record under
+   * the old name and refuse it as somebody else's.
+   */
+  private void linkChangedClient(Long clientId, Long fineractClientId) {
+    Client current =
+        clientRepository
+            .findById(clientId)
+            .orElseThrow(
+                () -> new ClientNotFoundException("Client not found with ID: " + clientId));
+    current.setFineractClientId(fineractClientId);
+    current.setStatus(ClientStatus.ACTIVE);
+    current.setFineractSyncPending(true);
+    current.setFineractSyncError(null);
+    clientRepository.save(current);
   }
 
   /*
