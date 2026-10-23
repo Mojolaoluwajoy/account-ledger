@@ -26,6 +26,17 @@ public final class RemoteErrors {
     return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
   }
 
+  /*
+   * True when the other service refused the request itself (a 4xx answer), so
+   * sending it again would be refused again. 408 and 429 are the exceptions:
+   * they mean "not now", and a later attempt can succeed.
+   */
+  public static boolean isPermanent(Exception e) {
+    return e instanceof FeignException.FeignClientException clientError
+        && clientError.status() != 408
+        && clientError.status() != 429;
+  }
+
   private static String reason(FeignException e) {
     String body = e.contentUTF8();
     if (body == null || body.isBlank()) {

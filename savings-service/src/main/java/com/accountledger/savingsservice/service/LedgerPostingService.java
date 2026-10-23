@@ -7,7 +7,6 @@ import com.accountledger.savingsservice.exception.NotRetryableException;
 import com.accountledger.savingsservice.repository.LedgerPostingRepository;
 import com.accountledger.savingsservice.util.LedgerClient;
 import com.accountledger.savingsservice.util.RemoteErrors;
-import feign.FeignException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,7 +47,7 @@ public class LedgerPostingService {
    * is retried on the next run if the ledger service fails; the ledger ignores
    * a reference it has already posted, so retrying is safe.
    *
-   * A posting the ledger service rejects as invalid (a 4xx answer) would be
+   * A posting the ledger service rejects as invalid (a 4xx answer other than 408 or 429) would be
    * rejected again every time, so it is marked FAILED and left for someone to
    * look at instead of being retried forever ahead of newer postings.
    */
@@ -62,22 +61,24 @@ public class LedgerPostingService {
         posting.setPostedAt(LocalDateTime.now());
         posting.setLastError(null);
         log.info("Ledger entry posted for reference: {}", posting.getTransactionReference());
-      } catch (FeignException.FeignClientException e) {
-        posting.setStatus(LedgerPostingStatus.FAILED);
-        posting.setAttempts(posting.getAttempts() + 1);
-        posting.setLastError(truncate(RemoteErrors.describe("Ledger service", e)));
-        log.error(
-            "Ledger posting {} was rejected by the ledger service and will not be retried: {}",
-            posting.getTransactionReference(),
-            posting.getLastError());
       } catch (Exception e) {
-        posting.setAttempts(posting.getAttempts() + 1);
-        posting.setLastError(truncate(RemoteErrors.describe("Ledger service", e)));
-        log.warn(
-            "Ledger posting {} failed (attempt {}), will retry: {}",
-            posting.getTransactionReference(),
-            posting.getAttempts(),
-            posting.getLastError());
+        if (RemoteErrors.isPermanent(e)) {
+          posting.setStatus(LedgerPostingStatus.FAILED);
+          posting.setAttempts(posting.getAttempts() + 1);
+          posting.setLastError(truncate(RemoteErrors.describe("Ledger service", e)));
+          log.error(
+              "Ledger posting {} was rejected by the ledger service and will not be retried: {}",
+              posting.getTransactionReference(),
+              posting.getLastError());
+        } else {
+          posting.setAttempts(posting.getAttempts() + 1);
+          posting.setLastError(truncate(RemoteErrors.describe("Ledger service", e)));
+          log.warn(
+              "Ledger posting {} failed (attempt {}), will retry: {}",
+              posting.getTransactionReference(),
+              posting.getAttempts(),
+              posting.getLastError());
+        }
       }
       ledgerPostingRepository.save(posting);
     }

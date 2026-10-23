@@ -30,6 +30,12 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(ReferenceConflictException.class)
+  public ResponseEntity<ApiResponse<Object>> handleReferenceConflict(
+      ReferenceConflictException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ApiResponse<Object>> handleValidationErrors(
       MethodArgumentNotValidException ex) {

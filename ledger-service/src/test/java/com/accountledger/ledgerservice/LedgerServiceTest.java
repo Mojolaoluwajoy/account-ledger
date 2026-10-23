@@ -16,6 +16,7 @@ import com.accountledger.ledgerservice.entity.LedgerEntry;
 import com.accountledger.ledgerservice.enums.GlAccountType;
 import com.accountledger.ledgerservice.enums.TransactionEntryType;
 import com.accountledger.ledgerservice.exception.GlAccountNotFoundException;
+import com.accountledger.ledgerservice.exception.ReferenceConflictException;
 import com.accountledger.ledgerservice.repository.GlAccountRepository;
 import com.accountledger.ledgerservice.repository.LedgerEntryRepository;
 import com.accountledger.ledgerservice.service.LedgerService;
@@ -245,6 +246,37 @@ class LedgerServiceTest {
 
     assertEquals(1L, response.getId());
     verify(ledgerEntryRepository, never()).save(any(LedgerEntry.class));
+  }
+
+  @Test
+  void postEntry_withReferenceAlreadyPostedForDifferentAmount_shouldRefuse() {
+    when(ledgerEntryRepository.findFirstByTransactionReference("SAV001-123"))
+        .thenReturn(Optional.of(savedEntry));
+    depositRequest.setAmount(new BigDecimal("600.00"));
+
+    assertThrows(ReferenceConflictException.class, () -> ledgerService.postEntry(depositRequest));
+
+    verify(ledgerEntryRepository, never()).save(any(LedgerEntry.class));
+  }
+
+  @Test
+  void postEntry_withReferenceAlreadyPostedForDifferentType_shouldRefuse() {
+    when(ledgerEntryRepository.findFirstByTransactionReference("SAV001-123"))
+        .thenReturn(Optional.of(savedEntry));
+    depositRequest.setTransactionType(TransactionEntryType.SAVINGS_WITHDRAWAL);
+
+    assertThrows(ReferenceConflictException.class, () -> ledgerService.postEntry(depositRequest));
+
+    verify(ledgerEntryRepository, never()).save(any(LedgerEntry.class));
+  }
+
+  @Test
+  void postEntry_retryWithSameAmountAtDifferentScale_shouldReturnExistingEntry() {
+    when(ledgerEntryRepository.findFirstByTransactionReference("SAV001-123"))
+        .thenReturn(Optional.of(savedEntry));
+    depositRequest.setAmount(new BigDecimal("500"));
+
+    assertEquals(1L, ledgerService.postEntry(depositRequest).getId());
   }
 
   @Test
