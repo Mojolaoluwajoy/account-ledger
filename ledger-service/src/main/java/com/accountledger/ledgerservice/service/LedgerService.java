@@ -98,6 +98,12 @@ public class LedgerService {
         debitAccountCode = "5001";
         creditAccountCode = "2001";
       }
+      // Fixed deposit paid for from the customer's savings account: the
+      // savings obligation becomes a fixed deposit obligation.
+      case FIXED_DEPOSIT_FUNDING -> {
+        debitAccountCode = "2001";
+        creditAccountCode = "2002";
+      }
       // Monthly interest paid into a savings account: an expense, owed to
       // the customer as savings.
       case SAVINGS_INTEREST -> {

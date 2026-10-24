@@ -119,6 +119,23 @@ public class SavingsAccountController {
   }
 
   @Operation(
+      summary = "Pay for a new fixed deposit from a savings account",
+      description =
+          "Called by the fixed deposit service. Takes the amount out under the same rules "
+              + "as a withdrawal. Sending the same reference again changes nothing.")
+  @PostMapping("/{accountId}/fixed-deposit-fundings")
+  public ResponseEntity<ApiResponse<TransactionResponse>> debitFixedDepositFunding(
+      @PathVariable Long accountId, @Valid @RequestBody FixedDepositFundingRequest request) {
+    log.info(
+        "Request received to fund fixed deposit {} from account ID: {}",
+        request.getReference(),
+        accountId);
+    TransactionResponse response =
+        savingsAccountService.debitFixedDepositFunding(accountId, request);
+    return ResponseEntity.ok(ApiResponse.success("Fixed deposit funding taken", response));
+  }
+
+  @Operation(
       summary = "Close a savings account",
       description =
           "Pays interest earned up to yesterday, moves whatever is left to "

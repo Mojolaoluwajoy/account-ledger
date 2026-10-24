@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.accountledger.fixeddepositservice.dto.CreateFixedDepositRequest;
@@ -88,6 +89,20 @@ class FixedDepositServiceTest {
     verify(ledgerPostingService)
         .record(
             eq("FIXED_DEPOSIT_CREATION"), eq(new BigDecimal("10000.00")), eq("FD-1"), anyString());
+  }
+
+  @Test
+  void createFixedDeposit_withFundingAccount_shouldWaitForFundingAndLeaveLedgerToSavings() {
+    validRequest.setFundingAccountId(6L);
+    when(fixedDepositRepository.save(any(FixedDeposit.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    FixedDepositResponse response = fixedDepositService.createFixedDeposit(validRequest);
+
+    assertEquals(FixedDepositStatus.PENDING_FUNDING, response.getStatus());
+    assertEquals(6L, response.getFundingAccountId());
+    verify(savingsServiceClient).requireFundingAccount(6L, 1L);
+    verifyNoInteractions(ledgerPostingService);
   }
 
   @Test

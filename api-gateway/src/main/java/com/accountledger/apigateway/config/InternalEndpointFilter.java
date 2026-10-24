@@ -21,7 +21,8 @@ import org.springframework.web.util.UrlPathHelper;
  * Keeps endpoints that only our services call off the public gateway. The
  * services reach each other directly inside Docker, never through here, so
  * nothing that should call these is affected. Without this, anyone could post
- * ledger entries or credit an account with a made-up fixed deposit payout.
+ * ledger entries, credit an account with a made-up fixed deposit payout or
+ * take money out of someone's account as fixed deposit funding.
  *
  * Blocked requests get a 404, as if the endpoint did not exist.
  */
@@ -36,8 +37,9 @@ public class InternalEndpointFilter extends OncePerRequestFilter {
       List.of(
           // Ledger entries are posted by the savings and fixed deposit services.
           new Blocked(HttpMethod.POST, "/api/v1/ledger/entries/**"),
-          // Payouts are sent by the fixed deposit service.
-          new Blocked(null, "/api/v1/savings-accounts/*/fixed-deposit-payouts/**"));
+          // Payouts and fundings are sent by the fixed deposit service.
+          new Blocked(null, "/api/v1/savings-accounts/*/fixed-deposit-payouts/**"),
+          new Blocked(null, "/api/v1/savings-accounts/*/fixed-deposit-fundings/**"));
 
   private final AntPathMatcher matcher = new AntPathMatcher();
   private final UrlPathHelper pathHelper = new UrlPathHelper();

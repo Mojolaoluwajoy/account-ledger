@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.accountledger.savingsservice.dto.FixedDepositFundingRequest;
 import com.accountledger.savingsservice.dto.FixedDepositPayoutRequest;
 import com.accountledger.savingsservice.dto.OpenSavingsAccountRequest;
 import com.accountledger.savingsservice.dto.SavingsAccountResponse;
@@ -360,6 +361,99 @@ class SavingsAccountServiceTest {
         () -> savingsAccountService.creditFixedDepositPayout(1L, payoutOf("10000.00", "246.58")));
 
     verifyNoInteractions(ledgerPostingService);
+  }
+
+  @Test
+  void debitFixedDepositFunding_shouldTakeAmountAndPostIt() {
+    account.setBalance(new BigDecimal("10500.00"));
+    account.setAvailableBalance(new BigDecimal("10500.00"));
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-FUND-7")).thenReturn(Optional.empty());
+
+    TransactionResponse response =
+        savingsAccountService.debitFixedDepositFunding(1L, fundingOf("10000.00"));
+
+    assertEquals(new BigDecimal("500.00"), response.getNewBalance());
+    assertEquals("FIXED_DEPOSIT_FUNDING", response.getTransactionType());
+    verify(ledgerPostingService)
+        .record(
+            eq("FIXED_DEPOSIT_FUNDING"),
+            eq(new BigDecimal("10000.00")),
+            eq("FD-FUND-7"),
+            anyString());
+  }
+
+  @Test
+  void debitFixedDepositFunding_alreadyTaken_shouldReturnEarlierResultWithoutTakingAgain() {
+    SavingsTransaction earlier = new SavingsTransaction();
+    earlier.setAccount(account);
+    earlier.setTransactionType(TransactionType.FIXED_DEPOSIT_FUNDING);
+    earlier.setAmount(new BigDecimal("10000.00"));
+    earlier.setBalanceBefore(new BigDecimal("10500.00"));
+    earlier.setBalanceAfter(new BigDecimal("500.00"));
+    earlier.setReference("FD-FUND-7");
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-FUND-7"))
+        .thenReturn(Optional.of(earlier));
+
+    TransactionResponse response =
+        savingsAccountService.debitFixedDepositFunding(1L, fundingOf("10000.00"));
+
+    assertEquals(new BigDecimal("500.00"), response.getNewBalance());
+    verify(savingsAccountRepository, never()).save(any(SavingsAccount.class));
+    verifyNoInteractions(ledgerPostingService);
+  }
+
+  @Test
+  void debitFixedDepositFunding_referenceUsedForDifferentAmount_shouldThrowException() {
+    SavingsTransaction earlier = new SavingsTransaction();
+    earlier.setAccount(account);
+    earlier.setTransactionType(TransactionType.FIXED_DEPOSIT_FUNDING);
+    earlier.setAmount(new BigDecimal("400.00"));
+    earlier.setReference("FD-FUND-7");
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-FUND-7"))
+        .thenReturn(Optional.of(earlier));
+
+    assertThrows(
+        PayoutReferenceConflictException.class,
+        () -> savingsAccountService.debitFixedDepositFunding(1L, fundingOf("10000.00")));
+
+    verifyNoInteractions(ledgerPostingService);
+  }
+
+  @Test
+  void debitFixedDepositFunding_beyondMinimumBalance_shouldThrowAndTakeNothing() {
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-FUND-7")).thenReturn(Optional.empty());
+
+    // 500.00 in the account and a 50.00 minimum balance.
+    assertThrows(
+        InsufficientBalanceException.class,
+        () -> savingsAccountService.debitFixedDepositFunding(1L, fundingOf("460.00")));
+
+    assertEquals(new BigDecimal("500.00"), account.getBalance());
+    verifyNoInteractions(ledgerPostingService);
+  }
+
+  @Test
+  void debitFixedDepositFunding_fromInactiveAccount_shouldThrowException() {
+    account.setStatus(SavingsAccountStatus.CLOSED);
+    when(savingsAccountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+    when(savingsTransactionRepository.findByReference("FD-FUND-7")).thenReturn(Optional.empty());
+
+    assertThrows(
+        AccountNotActiveException.class,
+        () -> savingsAccountService.debitFixedDepositFunding(1L, fundingOf("100.00")));
+
+    verifyNoInteractions(ledgerPostingService);
+  }
+
+  private FixedDepositFundingRequest fundingOf(String amount) {
+    FixedDepositFundingRequest request = new FixedDepositFundingRequest();
+    request.setReference("FD-FUND-7");
+    request.setAmount(new BigDecimal(amount));
+    return request;
   }
 
   private FixedDepositPayoutRequest payoutOf(String principal, String interest) {

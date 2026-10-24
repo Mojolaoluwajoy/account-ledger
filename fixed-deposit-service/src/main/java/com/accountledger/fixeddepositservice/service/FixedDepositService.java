@@ -44,6 +44,11 @@ public class FixedDepositService {
 
     clientServiceClient.requireActiveClient(request.getClientId());
     savingsServiceClient.requirePayoutAccount(request.getPayoutAccountId(), request.getClientId());
+    boolean fundedFromSavings = request.getFundingAccountId() != null;
+    if (fundedFromSavings) {
+      savingsServiceClient.requireFundingAccount(
+          request.getFundingAccountId(), request.getClientId());
+    }
 
     LocalDate depositDate = LocalDate.now();
     LocalDate maturityDate = depositDate.plusDays(request.getTenureInDays());
@@ -59,9 +64,22 @@ public class FixedDepositService {
     deposit.setDepositDate(depositDate);
     deposit.setMaturityDate(maturityDate);
     deposit.setMaturityAmount(maturityAmount);
-    deposit.setStatus(FixedDepositStatus.ACTIVE);
     deposit.setPayoutAccountId(request.getPayoutAccountId());
+    deposit.setFundingAccountId(request.getFundingAccountId());
 
+    // A deposit paid for from savings starts once the money has been taken
+    // (see FixedDepositFundingService), which also records it in the ledger.
+    if (fundedFromSavings) {
+      deposit.setStatus(FixedDepositStatus.PENDING_FUNDING);
+      FixedDeposit savedDeposit = fixedDepositRepository.save(deposit);
+      log.info(
+          "Fixed deposit created with ID: {}, waiting for funding from account {}",
+          savedDeposit.getId(),
+          request.getFundingAccountId());
+      return FixedDepositMapper.toResponse(savedDeposit);
+    }
+
+    deposit.setStatus(FixedDepositStatus.ACTIVE);
     FixedDeposit savedDeposit = fixedDepositRepository.save(deposit);
     log.info(
         "Fixed deposit created with ID: {} maturing on: {}", savedDeposit.getId(), maturityDate);

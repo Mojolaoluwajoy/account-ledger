@@ -23,6 +23,8 @@ public class FixedDepositMapper {
         .paidOutAt(deposit.getPaidOutAt())
         .payoutInterest(deposit.getPayoutInterest())
         .closedOn(deposit.getClosedOn())
+        .fundingAccountId(deposit.getFundingAccountId())
+        .fundingError(deposit.getFundingError())
         .build();
   }
 

@@ -69,6 +69,17 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(InvalidFundingAccountException.class)
+  public ResponseEntity<ApiResponse<Object>> handleInvalidFundingAccount(
+      InvalidFundingAccountException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  @ExceptionHandler(FundingRefusedException.class)
+  public ResponseEntity<ApiResponse<Object>> handleFundingRefused(FundingRefusedException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(SavingsServiceUnavailableException.class)
   public ResponseEntity<ApiResponse<Object>> handleSavingsServiceUnavailable(
       SavingsServiceUnavailableException ex) {
