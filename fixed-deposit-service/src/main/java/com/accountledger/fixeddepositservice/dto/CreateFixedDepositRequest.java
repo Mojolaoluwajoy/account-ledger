@@ -26,6 +26,12 @@ public class CreateFixedDepositRequest {
   @NotNull(message = "Payout account ID is required")
   private Long payoutAccountId;
 
+  /*
+   * The client's savings account to pay for the deposit from. Leave it out
+   * when the money is paid in cash.
+   */
+  private Long fundingAccountId;
+
   @NotNull(message = "Tenure is required")
   @Min(value = 1, message = "Tenure must be at least 1 day")
   private Integer tenureInDays;

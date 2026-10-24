@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.accountledger.fixeddepositservice.dto.SavingsAccountLookupResponse;
 import com.accountledger.fixeddepositservice.entity.FixedDeposit;
+import com.accountledger.fixeddepositservice.exception.InvalidFundingAccountException;
 import com.accountledger.fixeddepositservice.exception.InvalidPayoutAccountException;
 import com.accountledger.fixeddepositservice.exception.SavingsServiceUnavailableException;
 import com.accountledger.fixeddepositservice.feign.SavingsServiceApi;
@@ -121,6 +122,33 @@ class SavingsServiceClientTest {
     ArgumentCaptor<Map<String, Object>> sent = ArgumentCaptor.forClass(Map.class);
     verify(savingsServiceApi).creditFixedDepositPayout(eq(5L), sent.capture());
     assertEquals(new BigDecimal("591.78"), sent.getValue().get("interest"));
+  }
+
+  @Test
+  void requireFundingAccount_withAnotherClientsAccount_shouldThrowInvalidFundingAccount() {
+    when(savingsServiceApi.getAccountById(5L)).thenReturn(account(2L, "ACTIVE"));
+
+    InvalidFundingAccountException e =
+        assertThrows(
+            InvalidFundingAccountException.class,
+            () -> savingsServiceClient.requireFundingAccount(5L, 1L));
+    assertEquals("Funding account 5 does not belong to client 1", e.getMessage());
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  void fund_shouldTakePrincipalFromFundingAccountUnderDepositReference() {
+    FixedDeposit deposit = new FixedDeposit();
+    deposit.setId(9L);
+    deposit.setFundingAccountId(6L);
+    deposit.setPrincipalAmount(new BigDecimal("10000.00"));
+
+    savingsServiceClient.fund(deposit);
+
+    ArgumentCaptor<Map<String, Object>> sent = ArgumentCaptor.forClass(Map.class);
+    verify(savingsServiceApi).debitFixedDepositFunding(eq(6L), sent.capture());
+    assertEquals("FD-FUND-9", sent.getValue().get("reference"));
+    assertEquals(new BigDecimal("10000.00"), sent.getValue().get("amount"));
   }
 
   private SavingsAccountLookupResponse account(Long clientId, String status) {

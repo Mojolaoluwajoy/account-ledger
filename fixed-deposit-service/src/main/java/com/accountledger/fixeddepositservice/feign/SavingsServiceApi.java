@@ -17,4 +17,8 @@ public interface SavingsServiceApi {
   @PostMapping("/api/v1/savings-accounts/{accountId}/fixed-deposit-payouts")
   void creditFixedDepositPayout(
       @PathVariable("accountId") Long accountId, @RequestBody Map<String, Object> request);
+
+  @PostMapping("/api/v1/savings-accounts/{accountId}/fixed-deposit-fundings")
+  void debitFixedDepositFunding(
+      @PathVariable("accountId") Long accountId, @RequestBody Map<String, Object> request);
 }

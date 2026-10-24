@@ -88,6 +88,16 @@ curl "$G/ledger/entries?page=0&size=20"
   maturity date has come is matured, exactly as `POST /fixed-deposits/{id}/mature`
   would; that endpoint still works for maturing one by hand. A deposit that
   fails stays `ACTIVE` and is tried again the next night.
+- **Paying for a fixed deposit.** Send `"fundingAccountId": 2` when creating
+  a deposit to take the principal from that savings account (it must be an
+  active account of the same client). The deposit is saved as
+  `PENDING_FUNDING`, then the money is taken and it becomes `ACTIVE`, with its
+  term starting that day (ledger: debit 2001 Savings Control, credit 2002).
+  If the account refuses (not enough money, closed) the deposit is
+  `FUNDING_FAILED`, nothing is taken and the request gets a 400. If the
+  savings service gives no clear answer the request gets a 202 and the deposit
+  is retried in the background; the money is never taken twice. Without
+  `fundingAccountId` the principal is treated as paid in cash, as before.
 - **Fixed deposit payouts.** Maturing a deposit marks its payout `PENDING`. A
   background job credits principal and interest to the payout account through
   savings-service and marks it `PAID`. A payout is credited at most once.

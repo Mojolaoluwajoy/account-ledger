@@ -75,4 +75,16 @@ public class FixedDeposit {
 
   /* The day the deposit was withdrawn early. */
   private LocalDate closedOn;
+
+  /*
+   * The savings account the deposit is paid for from. Empty when it was paid
+   * in cash.
+   */
+  private Long fundingAccountId;
+
+  @Column(nullable = false)
+  private int fundingAttempts = 0;
+
+  /* Why the last attempt to take the money failed, if it did. */
+  private String fundingError;
 }

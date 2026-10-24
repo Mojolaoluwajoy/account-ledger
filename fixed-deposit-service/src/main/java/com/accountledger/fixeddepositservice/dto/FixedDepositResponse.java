@@ -28,4 +28,6 @@ public class FixedDepositResponse {
   private LocalDateTime paidOutAt;
   private BigDecimal payoutInterest;
   private LocalDate closedOn;
+  private Long fundingAccountId;
+  private String fundingError;
 }
