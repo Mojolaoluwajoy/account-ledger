@@ -7,7 +7,6 @@ import com.accountledger.fixeddepositservice.exception.NotRetryableException;
 import com.accountledger.fixeddepositservice.repository.FixedDepositRepository;
 import com.accountledger.fixeddepositservice.util.RemoteErrors;
 import com.accountledger.fixeddepositservice.util.SavingsServiceClient;
-import feign.FeignException;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +30,7 @@ public class FixedDepositPayoutService {
    * and is retried on the next run if the savings service fails; the savings
    * service ignores a payout it has already credited, so retrying is safe.
    *
-   * A payout the savings service rejects (a 4xx answer, for example because
+   * A payout the savings service rejects (a 4xx answer other than 408 or 429, for example because
    * the account has been closed) would be rejected again every time, so it is
    * marked FAILED and left for someone to look at.
    */
@@ -49,22 +48,24 @@ public class FixedDepositPayoutService {
             "Fixed deposit {} paid into savings account {}",
             deposit.getId(),
             deposit.getPayoutAccountId());
-      } catch (FeignException.FeignClientException e) {
-        deposit.setPayoutStatus(PayoutStatus.FAILED);
-        deposit.setPayoutAttempts(deposit.getPayoutAttempts() + 1);
-        deposit.setPayoutError(truncate(RemoteErrors.describe("Savings service", e)));
-        log.error(
-            "Payout {} was rejected by the savings service and will not be retried: {}",
-            reference,
-            deposit.getPayoutError());
       } catch (Exception e) {
-        deposit.setPayoutAttempts(deposit.getPayoutAttempts() + 1);
-        deposit.setPayoutError(truncate(RemoteErrors.describe("Savings service", e)));
-        log.warn(
-            "Payout {} failed (attempt {}), will retry: {}",
-            reference,
-            deposit.getPayoutAttempts(),
-            deposit.getPayoutError());
+        if (RemoteErrors.isPermanent(e)) {
+          deposit.setPayoutStatus(PayoutStatus.FAILED);
+          deposit.setPayoutAttempts(deposit.getPayoutAttempts() + 1);
+          deposit.setPayoutError(truncate(RemoteErrors.describe("Savings service", e)));
+          log.error(
+              "Payout {} was rejected by the savings service and will not be retried: {}",
+              reference,
+              deposit.getPayoutError());
+        } else {
+          deposit.setPayoutAttempts(deposit.getPayoutAttempts() + 1);
+          deposit.setPayoutError(truncate(RemoteErrors.describe("Savings service", e)));
+          log.warn(
+              "Payout {} failed (attempt {}), will retry: {}",
+              reference,
+              deposit.getPayoutAttempts(),
+              deposit.getPayoutError());
+        }
       }
       fixedDepositRepository.save(deposit);
     }

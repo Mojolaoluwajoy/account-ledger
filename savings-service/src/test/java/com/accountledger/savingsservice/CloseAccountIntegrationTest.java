@@ -22,11 +22,16 @@ import com.accountledger.savingsservice.repository.LedgerPostingRepository;
 import com.accountledger.savingsservice.repository.SavingsAccountRepository;
 import com.accountledger.savingsservice.repository.SavingsProductRepository;
 import com.accountledger.savingsservice.repository.SavingsTransactionRepository;
+import com.accountledger.savingsservice.service.InterestService;
 import com.accountledger.savingsservice.service.SavingsAccountService;
 import com.accountledger.savingsservice.util.LedgerClient;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +43,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class CloseAccountIntegrationTest {
 
   @Autowired private SavingsAccountService savingsAccountService;
+  @Autowired private InterestService interestService;
   @Autowired private SavingsAccountRepository savingsAccountRepository;
   @Autowired private SavingsProductRepository savingsProductRepository;
   @Autowired private SavingsTransactionRepository savingsTransactionRepository;
@@ -101,6 +107,45 @@ class CloseAccountIntegrationTest {
         interestAccrualRepository
             .findByAccountIdAndPostingReferenceIsNull(account.getId())
             .isEmpty());
+  }
+
+  @Test
+  void close_whileNightlyJobRecordsInterest_shouldRecordEachDayOnceAndSucceed() throws Exception {
+    // Repeated with fresh accounts, since the two only collide when they overlap.
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      for (int round = 0; round < 10; round++) {
+        SavingsAccount closing = newAccount("10000.00", LocalDate.now().minusDays(5).atTime(9, 0));
+        CountDownLatch start = new CountDownLatch(1);
+
+        Future<CloseAccountResponse> closure =
+            executor.submit(
+                () -> {
+                  start.await();
+                  return savingsAccountService.closeAccount(
+                      closing.getId(), transferTo(other.getId()));
+                });
+        Future<Integer> nightly =
+            executor.submit(
+                () -> {
+                  start.await();
+                  return interestService.accrue(closing.getId(), LocalDate.now().minusDays(1));
+                });
+        start.countDown();
+
+        CloseAccountResponse response = closure.get();
+        nightly.get();
+
+        assertEquals(0, new BigDecimal("5.00").compareTo(response.getInterestPaid()));
+        assertEquals(
+            5,
+            interestAccrualRepository.findAll().stream()
+                .filter(accrual -> accrual.getAccountId().equals(closing.getId()))
+                .count());
+      }
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test

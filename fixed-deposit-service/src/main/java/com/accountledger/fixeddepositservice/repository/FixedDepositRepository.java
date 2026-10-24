@@ -5,6 +5,7 @@ import com.accountledger.fixeddepositservice.enums.FixedDepositStatus;
 import com.accountledger.fixeddepositservice.enums.PayoutStatus;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -32,6 +33,9 @@ public interface FixedDepositRepository extends JpaRepository<FixedDeposit, Long
   List<FixedDeposit> findByPayoutStatusOrderByIdAsc(PayoutStatus payoutStatus);
 
   List<FixedDeposit> findByStatus(FixedDepositStatus status);
+
+  List<FixedDeposit> findTop50ByStatusAndCreatedAtBeforeOrderByIdAsc(
+      FixedDepositStatus status, LocalDateTime createdBefore);
 
   List<FixedDeposit> findByStatusAndMaturityDateLessThanEqual(
       FixedDepositStatus status, LocalDate date);
