@@ -2,6 +2,7 @@ package com.accountledger.savingsservice.service;
 
 import com.accountledger.savingsservice.dto.CloseAccountRequest;
 import com.accountledger.savingsservice.dto.CloseAccountResponse;
+import com.accountledger.savingsservice.dto.FixedDepositFundingRequest;
 import com.accountledger.savingsservice.dto.FixedDepositPayoutRequest;
 import com.accountledger.savingsservice.dto.OpenSavingsAccountRequest;
 import com.accountledger.savingsservice.dto.PageResponse;
@@ -53,6 +54,7 @@ public class SavingsAccountService {
   private static final String LEDGER_WITHDRAWAL = "SAVINGS_WITHDRAWAL";
   private static final String LEDGER_FD_PAYOUT = "FIXED_DEPOSIT_PAYOUT";
   private static final String LEDGER_FD_INTEREST_PAYOUT = "FIXED_DEPOSIT_INTEREST_PAYOUT";
+  private static final String LEDGER_FD_FUNDING = "FIXED_DEPOSIT_FUNDING";
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private final SavingsAccountRepository savingsAccountRepository;
@@ -333,6 +335,62 @@ public class SavingsAccountService {
     }
     log.info(
         "Fixed deposit payout {} credited. New balance: {}", request.getReference(), newBalance);
+
+    return toTransactionResponse(accountId, transaction);
+  }
+
+  /*
+   * Takes the money for a new fixed deposit out of the account, under the
+   * same rules as a withdrawal. The fixed deposit service retries when it
+   * gets no clear answer, so a reference already taken returns the earlier
+   * result instead of taking the money twice.
+   */
+  @Transactional
+  public TransactionResponse debitFixedDepositFunding(
+      Long accountId, FixedDepositFundingRequest request) {
+    log.info(
+        "Processing fixed deposit funding {} from account ID: {}",
+        request.getReference(),
+        accountId);
+
+    SavingsAccount account = lockAccount(accountId);
+
+    Optional<SavingsTransaction> alreadyTaken =
+        savingsTransactionRepository.findByReference(request.getReference());
+    if (alreadyTaken.isPresent()) {
+      SavingsTransaction earlier = alreadyTaken.get();
+      if (!earlier.getAccount().getId().equals(accountId)
+          || earlier.getTransactionType() != TransactionType.FIXED_DEPOSIT_FUNDING
+          || earlier.getAmount().compareTo(request.getAmount()) != 0) {
+        throw new PayoutReferenceConflictException(
+            "Reference " + request.getReference() + " was already used for another transaction");
+      }
+      log.info("Fixed deposit funding {} was already taken", request.getReference());
+      return toTransactionResponse(accountId, earlier);
+    }
+
+    validateAccountIsActive(account);
+
+    BigDecimal balanceBefore = account.getBalance();
+    BigDecimal newBalance =
+        balanceAfterTakingOut(account, request.getAmount(), "Fixed deposit funding");
+    account.setBalance(newBalance);
+    account.setAvailableBalance(newBalance);
+    savingsAccountRepository.save(account);
+
+    String description = "Fixed deposit funding - " + request.getReference();
+    SavingsTransaction transaction =
+        saveTransaction(
+            account,
+            TransactionType.FIXED_DEPOSIT_FUNDING,
+            request.getAmount(),
+            balanceBefore,
+            newBalance,
+            description,
+            request.getReference());
+    ledgerPostingService.record(
+        LEDGER_FD_FUNDING, request.getAmount(), request.getReference(), description);
+    log.info("Fixed deposit funding {} taken. New balance: {}", request.getReference(), newBalance);
 
     return toTransactionResponse(accountId, transaction);
   }

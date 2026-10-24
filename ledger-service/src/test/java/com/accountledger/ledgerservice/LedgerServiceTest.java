@@ -210,6 +210,25 @@ class LedgerServiceTest {
     assertEquals("2001", response.getCreditAccountCode());
   }
 
+  @Test
+  void postEntry_fixedDepositFunding_shouldDebitSavingsControlAndCreditFixedDepositLiability() {
+    PostLedgerEntryRequest request = new PostLedgerEntryRequest();
+    request.setTransactionType(TransactionEntryType.FIXED_DEPOSIT_FUNDING);
+    request.setAmount(new BigDecimal("10000.00"));
+    request.setTransactionReference("FD-FUND-1");
+    when(glAccountRepository.findByAccountCode("2001"))
+        .thenReturn(Optional.of(savingsControlAccount));
+    when(glAccountRepository.findByAccountCode("2002"))
+        .thenReturn(Optional.of(fixedDepositLiabilityAccount));
+    when(ledgerEntryRepository.save(any(LedgerEntry.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    LedgerEntryResponse response = ledgerService.postEntry(request);
+
+    assertEquals("2001", response.getDebitAccountCode());
+    assertEquals("2002", response.getCreditAccountCode());
+  }
+
   private LedgerEntryResponse postPayoutEntry(
       TransactionEntryType type, String debitCode, String reference) {
     GlAccount debitAccount = new GlAccount();
