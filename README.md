@@ -84,10 +84,6 @@ curl "$G/ledger/entries?page=0&size=20"
   sends the posting to the ledger service every few seconds. If the ledger
   service is down, postings wait and are retried; the ledger ignores a
   reference it has already posted, so nothing is posted twice.
-- **Fixed deposit maturity.** Every night (00:30) each active deposit whose
-  maturity date has come is matured, exactly as `POST /fixed-deposits/{id}/mature`
-  would; that endpoint still works for maturing one by hand. A deposit that
-  fails stays `ACTIVE` and is tried again the next night.
 - **Paying for a fixed deposit.** Send `"fundingAccountId": 2` when creating
   a deposit to take the principal from that savings account (it must be an
   active account of the same client). The deposit is saved as
@@ -98,6 +94,10 @@ curl "$G/ledger/entries?page=0&size=20"
   savings service gives no clear answer the request gets a 202 and the deposit
   is retried in the background; the money is never taken twice. Without
   `fundingAccountId` the principal is treated as paid in cash, as before.
+- **Fixed deposit maturity.** Every night (00:30) each active deposit whose
+  maturity date has come is matured, exactly as `POST /fixed-deposits/{id}/mature`
+  would; that endpoint still works for maturing one by hand. A deposit that
+  fails stays `ACTIVE` and is tried again the next night.
 - **Fixed deposit payouts.** Maturing a deposit marks its payout `PENDING`. A
   background job credits principal and interest to the payout account through
   savings-service and marks it `PAID`. A payout is credited at most once.
@@ -107,8 +107,9 @@ curl "$G/ledger/entries?page=0&size=20"
   penalty (`fixed-deposit.early-withdrawal.penalty-rate`), never below zero,
   and the money is paid into the payout account the same way as at maturity.
 - **Failures.** A posting or payout the other service rejects outright (a 4xx
-  answer) is marked `FAILED` with the reason, instead of being retried
-  forever. See the admin endpoints below to list and retry them.
+  answer other than 408 or 429, which only mean "not now") is marked `FAILED`
+  with the reason, instead of being retried forever. See the admin endpoints
+  below to list and retry them.
 - **Interest.** Every night (00:15) each active savings account earns
   `end-of-day balance x annual rate / 365` for the day before, kept to 6
   decimal places; nothing on a day it ends below the product's minimum
