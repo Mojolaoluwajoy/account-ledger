@@ -56,6 +56,9 @@ curl -X POST $G/savings-products -H "$J" -d '{"name":"Basic Savings","shortName"
 
 # 2. A client. It starts PENDING and becomes ACTIVE once Fineract accepts it,
 #    usually straight away. Check with: curl $G/clients/1
+#    The phone number comes back as +2348030000001: numbers are stored in
+#    international form, so 0803 000 0001 and +234 803 000 0001 are the same
+#    number. Numbers from outside Nigeria must start with + and the country code.
 curl -X POST $G/clients -H "$J" -d '{"firstName":"Ada","lastName":"Obi",
   "email":"ada@example.com","phoneNumber":"08030000001","dateOfBirth":"1990-04-02"}'
 
