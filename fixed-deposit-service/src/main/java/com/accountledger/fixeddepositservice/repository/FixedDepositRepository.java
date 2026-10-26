@@ -34,7 +34,10 @@ public interface FixedDepositRepository extends JpaRepository<FixedDeposit, Long
 
   List<FixedDeposit> findByStatus(FixedDepositStatus status);
 
-  List<FixedDeposit> findTop50ByStatusAndCreatedAtBeforeOrderByIdAsc(
+  List<FixedDeposit> findByStatusOrderByIdAsc(FixedDepositStatus status);
+
+  /* Fewest attempts first, so deposits that keep failing do not hold up newer ones. */
+  List<FixedDeposit> findTop50ByStatusAndCreatedAtBeforeOrderByFundingAttemptsAscIdAsc(
       FixedDepositStatus status, LocalDateTime createdBefore);
 
   List<FixedDeposit> findByStatusAndMaturityDateLessThanEqual(

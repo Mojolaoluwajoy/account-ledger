@@ -2,17 +2,21 @@ package com.accountledger.fixeddepositservice.service;
 
 import com.accountledger.fixeddepositservice.entity.FixedDeposit;
 import com.accountledger.fixeddepositservice.enums.FixedDepositStatus;
+import com.accountledger.fixeddepositservice.enums.FundingStatus;
 import com.accountledger.fixeddepositservice.exception.FixedDepositNotFoundException;
 import com.accountledger.fixeddepositservice.exception.FundingRefusedException;
+import com.accountledger.fixeddepositservice.exception.NotRetryableException;
 import com.accountledger.fixeddepositservice.repository.FixedDepositRepository;
 import com.accountledger.fixeddepositservice.util.RemoteErrors;
 import com.accountledger.fixeddepositservice.util.SavingsServiceClient;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /*
  * Takes the money for deposits paid for from a savings account. The deposit
@@ -26,6 +30,11 @@ import org.springframework.stereotype.Service;
  * - there is no clear answer: the deposit stays PENDING_FUNDING and the
  *   retry job tries again. The savings service ignores a reference it has
  *   already taken, so the money is never taken twice.
+ *
+ * A PENDING_FUNDING deposit is retried for as long as it takes: its money
+ * may already have been taken, so it is never given up on. A FUNDING_FAILED
+ * one can be retried by hand (see requeue), for example once the account has
+ * enough money in it.
  */
 @Slf4j
 @Service
@@ -100,7 +109,7 @@ public class FixedDepositFundingService {
   @Scheduled(fixedDelayString = "${fixed-deposit.funding.retry-delay-ms:30000}")
   public void fundPending() {
     for (FixedDeposit deposit :
-        fixedDepositRepository.findTop50ByStatusAndCreatedAtBeforeOrderByIdAsc(
+        fixedDepositRepository.findTop50ByStatusAndCreatedAtBeforeOrderByFundingAttemptsAscIdAsc(
             FixedDepositStatus.PENDING_FUNDING, LocalDateTime.now().minusMinutes(1))) {
       try {
         fund(deposit.getId());
@@ -110,6 +119,48 @@ public class FixedDepositFundingService {
         log.error("Could not fund fixed deposit {}, will retry", deposit.getId(), e);
       }
     }
+  }
+
+  public List<FixedDeposit> findByFundingStatus(FundingStatus status) {
+    return fixedDepositRepository.findByStatusOrderByIdAsc(status.toDepositStatus());
+  }
+
+  /*
+   * Puts a FUNDING_FAILED deposit back to PENDING_FUNDING, optionally taking
+   * the money from a different savings account; call fund next. Nothing was
+   * taken under the deposit's funding reference when it was refused, so the
+   * account can safely change.
+   */
+  @Transactional
+  public FixedDeposit requeue(Long depositId, Long newFundingAccountId) {
+    FixedDeposit deposit =
+        fixedDepositRepository
+            .findByIdForUpdate(depositId)
+            .orElseThrow(
+                () ->
+                    new FixedDepositNotFoundException(
+                        "Fixed deposit not found with ID: " + depositId));
+
+    if (deposit.getStatus() != FixedDepositStatus.FUNDING_FAILED) {
+      throw new NotRetryableException(
+          "Fixed deposit "
+              + depositId
+              + " is "
+              + deposit.getStatus()
+              + "; only FUNDING_FAILED deposits can be retried");
+    }
+
+    if (newFundingAccountId != null) {
+      savingsServiceClient.requireFundingAccount(newFundingAccountId, deposit.getClientId());
+      deposit.setFundingAccountId(newFundingAccountId);
+    }
+
+    deposit.setStatus(FixedDepositStatus.PENDING_FUNDING);
+    log.info(
+        "Funding of fixed deposit {} queued again from savings account {}",
+        depositId,
+        deposit.getFundingAccountId());
+    return fixedDepositRepository.save(deposit);
   }
 
   private String truncate(String message) {

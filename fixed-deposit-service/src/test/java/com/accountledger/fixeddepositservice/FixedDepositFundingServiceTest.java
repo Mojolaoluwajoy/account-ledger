@@ -134,7 +134,7 @@ class FixedDepositFundingServiceTest {
     other.setTenureInDays(30);
     other.setStatus(FixedDepositStatus.PENDING_FUNDING);
     when(fixedDepositRepository.findById(2L)).thenReturn(Optional.of(other));
-    when(fixedDepositRepository.findTop50ByStatusAndCreatedAtBeforeOrderByIdAsc(
+    when(fixedDepositRepository.findTop50ByStatusAndCreatedAtBeforeOrderByFundingAttemptsAscIdAsc(
             eq(FixedDepositStatus.PENDING_FUNDING), any(LocalDateTime.class)))
         .thenReturn(List.of(deposit, other));
     doThrow(new FeignException.Conflict("Conflict", REQUEST, null, Map.of()))

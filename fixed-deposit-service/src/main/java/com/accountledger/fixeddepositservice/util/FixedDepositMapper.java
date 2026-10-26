@@ -25,6 +25,7 @@ public class FixedDepositMapper {
         .closedOn(deposit.getClosedOn())
         .fundingAccountId(deposit.getFundingAccountId())
         .fundingError(deposit.getFundingError())
+        .fundingAttempts(deposit.getFundingAttempts())
         .build();
   }
 

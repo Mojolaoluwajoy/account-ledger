@@ -30,4 +30,5 @@ public class FixedDepositResponse {
   private LocalDate closedOn;
   private Long fundingAccountId;
   private String fundingError;
+  private Integer fundingAttempts;
 }

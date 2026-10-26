@@ -92,7 +92,9 @@ curl "$G/ledger/entries?page=0&size=20"
   If the account refuses (not enough money, closed) the deposit is
   `FUNDING_FAILED`, nothing is taken and the request gets a 400. If the
   savings service gives no clear answer the request gets a 202 and the deposit
-  is retried in the background; the money is never taken twice. Without
+  is retried in the background, for as long as it takes, since its money may
+  already have been taken; the money is never taken twice. A `FUNDING_FAILED`
+  deposit can be retried by hand (see the admin endpoints). Without
   `fundingAccountId` the principal is treated as paid in cash, as before.
 - **Fixed deposit maturity.** Every night (00:30) each active deposit whose
   maturity date has come is matured, exactly as `POST /fixed-deposits/{id}/mature`
@@ -167,7 +169,7 @@ to both.
 
 ### Admin endpoints
 
-For looking after failed postings and payouts, and running interest:
+For looking after failed postings, payouts and fundings, and running interest:
 
 | Endpoint | What it does |
 |---|---|
@@ -177,6 +179,8 @@ For looking after failed postings and payouts, and running interest:
 | `POST /admin/fixed-deposits/ledger-postings/{id}/retry` | The same for fixed deposit postings |
 | `GET /admin/fixed-deposits/payouts?status=FAILED` | Fixed deposits by payout status |
 | `POST /admin/fixed-deposits/{id}/payout/retry` | Put a `FAILED` payout back in the queue; optionally send `{"payoutAccountId": 3}` to pay into another active account of the same client |
+| `GET /admin/fixed-deposits/fundings?status=FUNDING_FAILED` | Fixed deposits paid for from savings that were refused (`FUNDING_FAILED`, the default) or are still being retried (`PENDING_FUNDING`), with `fundingAttempts` and `fundingError` |
+| `POST /admin/fixed-deposits/{id}/funding/retry` | Try again to take the money for a `FUNDING_FAILED` deposit, straight away; optionally send `{"fundingAccountId": 3}` to take it from another active account of the same client. Its term starts on the day the money is taken |
 | `POST /admin/savings/interest/run?asOf=2026-11-01` | Run the nightly interest job now, as if today were `asOf` (default today; not in the future) |
 
 Fix whatever caused the failure before retrying, or it will fail again.
