@@ -31,6 +31,12 @@ class InternalEndpointFilterTest {
   }
 
   @Test
+  void takingFixedDepositFundings_shouldBeRefused() throws Exception {
+    assertEquals(404, statusFor("POST", "/api/v1/savings-accounts/1/fixed-deposit-fundings"));
+    assertEquals(404, statusFor("POST", "/api/v1/savings-accounts/1/fixed-deposit-fundings/"));
+  }
+
+  @Test
   void publicEndpoints_shouldPassThrough() throws Exception {
     assertEquals(200, statusFor("GET", "/api/v1/ledger/entries"));
     assertEquals(200, statusFor("GET", "/api/v1/ledger/entries/reference/FD-1"));

@@ -84,6 +84,16 @@ curl "$G/ledger/entries?page=0&size=20"
   sends the posting to the ledger service every few seconds. If the ledger
   service is down, postings wait and are retried; the ledger ignores a
   reference it has already posted, so nothing is posted twice.
+- **Paying for a fixed deposit.** Send `"fundingAccountId": 2` when creating
+  a deposit to take the principal from that savings account (it must be an
+  active account of the same client). The deposit is saved as
+  `PENDING_FUNDING`, then the money is taken and it becomes `ACTIVE`, with its
+  term starting that day (ledger: debit 2001 Savings Control, credit 2002).
+  If the account refuses (not enough money, closed) the deposit is
+  `FUNDING_FAILED`, nothing is taken and the request gets a 400. If the
+  savings service gives no clear answer the request gets a 202 and the deposit
+  is retried in the background; the money is never taken twice. Without
+  `fundingAccountId` the principal is treated as paid in cash, as before.
 - **Fixed deposit maturity.** Every night (00:30) each active deposit whose
   maturity date has come is matured, exactly as `POST /fixed-deposits/{id}/mature`
   would; that endpoint still works for maturing one by hand. A deposit that
@@ -97,8 +107,9 @@ curl "$G/ledger/entries?page=0&size=20"
   penalty (`fixed-deposit.early-withdrawal.penalty-rate`), never below zero,
   and the money is paid into the payout account the same way as at maturity.
 - **Failures.** A posting or payout the other service rejects outright (a 4xx
-  answer) is marked `FAILED` with the reason, instead of being retried
-  forever. See the admin endpoints below to list and retry them.
+  answer other than 408 or 429, which only mean "not now") is marked `FAILED`
+  with the reason, instead of being retried forever. See the admin endpoints
+  below to list and retry them.
 - **Interest.** Every night (00:15) each active savings account earns
   `end-of-day balance x annual rate / 365` for the day before, kept to 6
   decimal places; nothing on a day it ends below the product's minimum
@@ -184,8 +195,9 @@ Set in `docker-compose.yml`; the defaults in each service's
 | `LEDGER_SERVICE_URL` | savings, fixed-deposit, gateway | `http://localhost:8084` |
 | `FIXED_DEPOSIT_SERVICE_URL` | gateway | `http://localhost:8083` |
 
-If Fineract cannot be reached, new clients stay `PENDING` (with the reason in
-`fineractSyncError`) and are retried every minute.
+If Fineract cannot be reached, or takes more than 10 seconds to answer, new
+clients stay `PENDING` (with the reason in `fineractSyncError`) and are
+retried every minute.
 
 ## Tests and formatting
 

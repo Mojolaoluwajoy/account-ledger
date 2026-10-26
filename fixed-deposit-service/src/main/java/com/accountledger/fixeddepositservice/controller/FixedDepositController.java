@@ -3,7 +3,10 @@ package com.accountledger.fixeddepositservice.controller;
 import com.accountledger.fixeddepositservice.dto.ApiResponse;
 import com.accountledger.fixeddepositservice.dto.CreateFixedDepositRequest;
 import com.accountledger.fixeddepositservice.dto.FixedDepositResponse;
+import com.accountledger.fixeddepositservice.enums.FixedDepositStatus;
+import com.accountledger.fixeddepositservice.service.FixedDepositFundingService;
 import com.accountledger.fixeddepositservice.service.FixedDepositService;
+import com.accountledger.fixeddepositservice.util.FixedDepositMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -22,18 +25,34 @@ import org.springframework.web.bind.annotation.*;
 public class FixedDepositController {
 
   private final FixedDepositService fixedDepositService;
+  private final FixedDepositFundingService fixedDepositFundingService;
 
   @Operation(
       summary = "Create a new fixed deposit",
       description =
           "Creates a fixed deposit for a client. "
               + "Funds are locked until the maturity date. "
-              + "Maturity amount is calculated automatically.")
+              + "Maturity amount is calculated automatically. "
+              + "With fundingAccountId the principal is taken from that savings account: "
+              + "201 once taken, 400 if the account refuses, or 202 if the savings service "
+              + "gave no clear answer (the deposit stays PENDING_FUNDING and is retried). "
+              + "Without it the principal is treated as paid in cash.")
   @PostMapping
   public ResponseEntity<ApiResponse<FixedDepositResponse>> createFixedDeposit(
       @Valid @RequestBody CreateFixedDepositRequest request) {
     log.info("Request received to create fixed deposit for client ID: {}", request.getClientId());
     FixedDepositResponse response = fixedDepositService.createFixedDeposit(request);
+    // The deposit is saved before the money is taken, so it is never lost
+    // once the savings account has paid for it.
+    if (response.getStatus() == FixedDepositStatus.PENDING_FUNDING) {
+      response = FixedDepositMapper.toResponse(fixedDepositFundingService.fund(response.getId()));
+      if (response.getStatus() == FixedDepositStatus.PENDING_FUNDING) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .body(
+                ApiResponse.success(
+                    "Fixed deposit created; its funding will be retried shortly", response));
+      }
+    }
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success("Fixed deposit created successfully", response));
   }
