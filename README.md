@@ -69,6 +69,7 @@ curl "$G/savings-accounts/1/transactions?page=0&size=20"
 curl -X POST $G/savings-accounts/1/transfer -H "$J" -d '{"destinationAccountId":2,"amount":50}'
 
 # 5. A fixed deposit that pays into savings account 1 when it matures
+#    (tenure 1 to 3650 days; interest rate above 0 and at most 100, % a year)
 curl -X POST $G/fixed-deposits -H "$J" -d '{"clientId":1,"principalAmount":10000,
   "interestRate":10,"tenureInDays":90,"payoutAccountId":1}'
 curl -X POST $G/fixed-deposits/1/mature     # only allowed on or after the maturity date

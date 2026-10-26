@@ -1,7 +1,9 @@
 package com.accountledger.fixeddepositservice.dto;
 
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -20,6 +22,7 @@ public class CreateFixedDepositRequest {
 
   @NotNull(message = "Interest rate is required")
   @DecimalMin(value = "0.0", inclusive = false, message = "Interest rate must be greater than zero")
+  @DecimalMax(value = "100.00", message = "Interest rate can be at most 100% a year")
   @Digits(integer = 36, fraction = 2, message = "Interest rate can have at most 2 decimal places")
   private BigDecimal interestRate;
 
@@ -28,5 +31,6 @@ public class CreateFixedDepositRequest {
 
   @NotNull(message = "Tenure is required")
   @Min(value = 1, message = "Tenure must be at least 1 day")
+  @Max(value = 3650, message = "Tenure can be at most 3650 days (10 years)")
   private Integer tenureInDays;
 }
