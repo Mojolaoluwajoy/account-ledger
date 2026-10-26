@@ -2,6 +2,7 @@ package com.accountledger.clientservice.repository;
 
 import com.accountledger.clientservice.entity.Client;
 import com.accountledger.clientservice.entity.ClientStatus;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,7 +17,8 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
   Optional<Client> findByEmail(String email);
 
-  List<Client> findByStatusAndFineractClientIdIsNull(ClientStatus status);
+  List<Client> findByStatusAndFineractClientIdIsNullAndCreatedAtBefore(
+      ClientStatus status, LocalDateTime createdBefore);
 
   List<Client> findByFineractSyncPendingTrueAndFineractClientIdIsNotNull();
 }

@@ -18,6 +18,7 @@ import com.accountledger.clientservice.util.ClientMapper;
 import com.accountledger.clientservice.util.Paging;
 import feign.FeignException;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
@@ -89,10 +90,15 @@ public class ClientService {
    * Retries everything that has not reached Fineract yet: clients that were
    * never created there (still PENDING with no Fineract ID) and clients whose
    * later changes were not pushed. Triggered by FineractSyncScheduler.
+   *
+   * Only clients created at least a minute ago are created again, so this
+   * does not race the request that created one and is still waiting for
+   * Fineract (its call gives up well within a minute).
    */
   public void retryPendingFineractSync() {
     List<Client> notCreated =
-        clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING);
+        clientRepository.findByStatusAndFineractClientIdIsNullAndCreatedAtBefore(
+            ClientStatus.PENDING, LocalDateTime.now().minusMinutes(1));
     List<Client> notUpdated =
         clientRepository.findByFineractSyncPendingTrueAndFineractClientIdIsNotNull();
     if (notCreated.isEmpty() && notUpdated.isEmpty()) {

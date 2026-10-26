@@ -30,6 +30,7 @@ import com.accountledger.clientservice.feign.FineractClient;
 import com.accountledger.clientservice.repository.ClientRepository;
 import com.accountledger.clientservice.service.ClientService;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -171,7 +172,8 @@ public class ClientServiceTest {
     savedClient.setStatus(ClientStatus.PENDING);
     FineractClientResponse fineractResponse = new FineractClientResponse();
     fineractResponse.setClientId(42L);
-    when(clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING))
+    when(clientRepository.findByStatusAndFineractClientIdIsNullAndCreatedAtBefore(
+            eq(ClientStatus.PENDING), any(LocalDateTime.class)))
         .thenReturn(List.of(savedClient));
     when(fineractClient.createClient(any(FineractCreateClientRequest.class)))
         .thenReturn(fineractResponse);
@@ -215,7 +217,8 @@ public class ClientServiceTest {
   @Test
   void retryPendingFineractSync_whenClientAlreadyInFineract_shouldAdoptItInsteadOfCreating() {
     savedClient.setStatus(ClientStatus.PENDING);
-    when(clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING))
+    when(clientRepository.findByStatusAndFineractClientIdIsNullAndCreatedAtBefore(
+            eq(ClientStatus.PENDING), any(LocalDateTime.class)))
         .thenReturn(List.of(savedClient));
     when(fineractClient.findByExternalId("CB-1")).thenReturn(searchResult(77L, "Jane", "Doe"));
 
@@ -229,7 +232,8 @@ public class ClientServiceTest {
   @Test
   void retryPendingFineractSync_whenExternalIdBelongsToSomeoneElse_shouldLeaveClientPending() {
     savedClient.setStatus(ClientStatus.PENDING);
-    when(clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING))
+    when(clientRepository.findByStatusAndFineractClientIdIsNullAndCreatedAtBefore(
+            eq(ClientStatus.PENDING), any(LocalDateTime.class)))
         .thenReturn(List.of(savedClient));
     when(fineractClient.findByExternalId("CB-1")).thenReturn(searchResult(77L, "Someone", "Else"));
 
@@ -367,7 +371,8 @@ public class ClientServiceTest {
     savedClient.setStatus(ClientStatus.PENDING);
     FineractClientResponse fineractResponse = new FineractClientResponse();
     fineractResponse.setClientId(42L);
-    when(clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING))
+    when(clientRepository.findByStatusAndFineractClientIdIsNullAndCreatedAtBefore(
+            eq(ClientStatus.PENDING), any(LocalDateTime.class)))
         .thenReturn(List.of(changedMeanwhile, savedClient));
     when(fineractClient.createClient(any(FineractCreateClientRequest.class)))
         .thenReturn(fineractResponse);
@@ -392,7 +397,8 @@ public class ClientServiceTest {
     renamed.setStatus(ClientStatus.PENDING);
     FineractClientResponse fineractResponse = new FineractClientResponse();
     fineractResponse.setClientId(42L);
-    when(clientRepository.findByStatusAndFineractClientIdIsNull(ClientStatus.PENDING))
+    when(clientRepository.findByStatusAndFineractClientIdIsNullAndCreatedAtBefore(
+            eq(ClientStatus.PENDING), any(LocalDateTime.class)))
         .thenReturn(List.of(savedClient));
     when(fineractClient.createClient(any(FineractCreateClientRequest.class)))
         .thenReturn(fineractResponse);
