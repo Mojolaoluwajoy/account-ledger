@@ -1,5 +1,6 @@
 package com.accountledger.clientservice.dto;
 
+import com.accountledger.clientservice.util.PhoneNumbers;
 import jakarta.validation.constraints.*;
 import java.time.LocalDate;
 import java.util.Locale;
@@ -19,6 +20,11 @@ public class CreateClientRequest {
   private String email;
 
   @NotBlank(message = "Phone number is required")
+  @Pattern(
+      regexp = PhoneNumbers.INTERNATIONAL_FORMAT,
+      message =
+          "Invalid phone number: use 0 and 10 digits for a Nigerian number,"
+              + " or + and the country code")
   private String phoneNumber;
 
   @Past(message = "Date of birth must be in the past")
@@ -31,5 +37,10 @@ public class CreateClientRequest {
    */
   public void setEmail(String email) {
     this.email = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+  }
+
+  /* Stored in international form; see PhoneNumbers. */
+  public void setPhoneNumber(String phoneNumber) {
+    this.phoneNumber = PhoneNumbers.normalize(phoneNumber);
   }
 }
