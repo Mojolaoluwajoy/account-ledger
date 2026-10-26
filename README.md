@@ -195,8 +195,9 @@ Set in `docker-compose.yml`; the defaults in each service's
 | `LEDGER_SERVICE_URL` | savings, fixed-deposit, gateway | `http://localhost:8084` |
 | `FIXED_DEPOSIT_SERVICE_URL` | gateway | `http://localhost:8083` |
 
-If Fineract cannot be reached, new clients stay `PENDING` (with the reason in
-`fineractSyncError`) and are retried every minute.
+If Fineract cannot be reached, or takes more than 10 seconds to answer, new
+clients stay `PENDING` (with the reason in `fineractSyncError`) and are
+retried every minute.
 
 ## Tests and formatting
 
