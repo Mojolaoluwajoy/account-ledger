@@ -4,6 +4,7 @@ import com.accountledger.savingsservice.dto.*;
 import com.accountledger.savingsservice.service.SavingsAccountService;
 import com.accountledger.savingsservice.util.Paging;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -19,6 +20,11 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @Tag(name = "Savings Accounts", description = "Endpoints for managing client savings accounts")
 public class SavingsAccountController {
+
+  private static final String IDEMPOTENCY_KEY_DESCRIPTION =
+      "Optional, for example a UUID. Sending the request again with the same key returns the "
+          + "first result instead of moving the money twice; the same key with a different "
+          + "request is refused with 409.";
 
   private final SavingsAccountService savingsAccountService;
 
@@ -65,9 +71,14 @@ public class SavingsAccountController {
               + "Balance is updated immediately.")
   @PostMapping("/{accountId}/deposit")
   public ResponseEntity<ApiResponse<TransactionResponse>> deposit(
-      @PathVariable Long accountId, @Valid @RequestBody TransactionRequest request) {
+      @PathVariable Long accountId,
+      @Valid @RequestBody TransactionRequest request,
+      @Parameter(description = IDEMPOTENCY_KEY_DESCRIPTION)
+          @RequestHeader(name = "Idempotency-Key", required = false)
+          String idempotencyKey) {
     log.info("Request received to deposit {} into account ID: {}", request.getAmount(), accountId);
-    TransactionResponse response = savingsAccountService.deposit(accountId, request);
+    TransactionResponse response =
+        savingsAccountService.deposit(accountId, request, idempotencyKey);
     return ResponseEntity.ok(ApiResponse.success("Deposit successful", response));
   }
 
@@ -78,9 +89,14 @@ public class SavingsAccountController {
               + "Blocked if withdrawal would breach minimum balance.")
   @PostMapping("/{accountId}/withdraw")
   public ResponseEntity<ApiResponse<TransactionResponse>> withdraw(
-      @PathVariable Long accountId, @Valid @RequestBody TransactionRequest request) {
+      @PathVariable Long accountId,
+      @Valid @RequestBody TransactionRequest request,
+      @Parameter(description = IDEMPOTENCY_KEY_DESCRIPTION)
+          @RequestHeader(name = "Idempotency-Key", required = false)
+          String idempotencyKey) {
     log.info("Request received to withdraw {} from account ID: {}", request.getAmount(), accountId);
-    TransactionResponse response = savingsAccountService.withdraw(accountId, request);
+    TransactionResponse response =
+        savingsAccountService.withdraw(accountId, request, idempotencyKey);
     return ResponseEntity.ok(ApiResponse.success("Withdrawal successful", response));
   }
 
@@ -91,13 +107,17 @@ public class SavingsAccountController {
               + "Blocked if it would breach the minimum balance of this account.")
   @PostMapping("/{accountId}/transfer")
   public ResponseEntity<ApiResponse<TransferResponse>> transfer(
-      @PathVariable Long accountId, @Valid @RequestBody TransferRequest request) {
+      @PathVariable Long accountId,
+      @Valid @RequestBody TransferRequest request,
+      @Parameter(description = IDEMPOTENCY_KEY_DESCRIPTION)
+          @RequestHeader(name = "Idempotency-Key", required = false)
+          String idempotencyKey) {
     log.info(
         "Request received to transfer {} from account ID: {} to account ID: {}",
         request.getAmount(),
         accountId,
         request.getDestinationAccountId());
-    TransferResponse response = savingsAccountService.transfer(accountId, request);
+    TransferResponse response = savingsAccountService.transfer(accountId, request, idempotencyKey);
     return ResponseEntity.ok(ApiResponse.success("Transfer successful", response));
   }
 

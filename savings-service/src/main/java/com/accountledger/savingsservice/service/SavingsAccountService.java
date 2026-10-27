@@ -19,7 +19,9 @@ import com.accountledger.savingsservice.enums.TransactionType;
 import com.accountledger.savingsservice.exception.AccountHasBalanceException;
 import com.accountledger.savingsservice.exception.AccountNotActiveException;
 import com.accountledger.savingsservice.exception.AccountNotFoundException;
+import com.accountledger.savingsservice.exception.IdempotencyKeyConflictException;
 import com.accountledger.savingsservice.exception.InsufficientBalanceException;
+import com.accountledger.savingsservice.exception.InvalidIdempotencyKeyException;
 import com.accountledger.savingsservice.exception.InvalidTransferException;
 import com.accountledger.savingsservice.exception.PayoutReferenceConflictException;
 import com.accountledger.savingsservice.exception.ProductNotFoundException;
@@ -36,6 +38,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +57,12 @@ public class SavingsAccountService {
   private static final String LEDGER_FD_PAYOUT = "FIXED_DEPOSIT_PAYOUT";
   private static final String LEDGER_FD_INTEREST_PAYOUT = "FIXED_DEPOSIT_INTEREST_PAYOUT";
   private static final SecureRandom RANDOM = new SecureRandom();
+  private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
+  private static final Pattern IDEMPOTENCY_KEY =
+      Pattern.compile("[\\x21-\\x7E]{1," + MAX_IDEMPOTENCY_KEY_LENGTH + "}");
+  private static final String IDEMPOTENCY_PREFIX = "IK-";
+  /* Marks the incoming leg of a transfer; an account ID never starts with a letter. */
+  private static final String INCOMING_PREFIX = "IK-IN-";
 
   private final SavingsAccountRepository savingsAccountRepository;
   private final SavingsProductRepository savingsProductRepository;
@@ -109,7 +118,19 @@ public class SavingsAccountService {
 
   @Transactional
   public TransactionResponse deposit(Long accountId, TransactionRequest request) {
+    return deposit(accountId, request, null);
+  }
+
+  /*
+   * idempotencyKey is optional (see idempotencyReference): a deposit sent
+   * again with the same key returns the first result instead of paying in
+   * twice.
+   */
+  @Transactional
+  public TransactionResponse deposit(
+      Long accountId, TransactionRequest request, String idempotencyKey) {
     log.info("Processing deposit of {} to account ID: {}", request.getAmount(), accountId);
+    String reference = idempotencyReference(accountId, idempotencyKey);
 
     SavingsAccount account =
         savingsAccountRepository
@@ -118,6 +139,12 @@ public class SavingsAccountService {
                 () ->
                     new AccountNotFoundException(
                         "Savings account not found with ID: " + accountId));
+
+    Optional<TransactionResponse> earlier =
+        earlierResult(accountId, reference, TransactionType.DEPOSIT, request.getAmount());
+    if (earlier.isPresent()) {
+      return earlier.get();
+    }
 
     validateAccountIsActive(account);
 
@@ -135,7 +162,8 @@ public class SavingsAccountService {
         request.getAmount(),
         balanceBefore,
         newBalance,
-        "Savings deposit");
+        "Savings deposit",
+        reference);
     log.info("Deposit successful. New balance: {}", newBalance);
 
     return TransactionResponse.builder()
@@ -150,7 +178,15 @@ public class SavingsAccountService {
 
   @Transactional
   public TransactionResponse withdraw(Long accountId, TransactionRequest request) {
+    return withdraw(accountId, request, null);
+  }
+
+  /* idempotencyKey works as for deposit. */
+  @Transactional
+  public TransactionResponse withdraw(
+      Long accountId, TransactionRequest request, String idempotencyKey) {
     log.info("Processing withdrawal of {} from account ID: {}", request.getAmount(), accountId);
+    String reference = idempotencyReference(accountId, idempotencyKey);
 
     SavingsAccount account =
         savingsAccountRepository
@@ -159,6 +195,12 @@ public class SavingsAccountService {
                 () ->
                     new AccountNotFoundException(
                         "Savings account not found with ID: " + accountId));
+
+    Optional<TransactionResponse> earlier =
+        earlierResult(accountId, reference, TransactionType.WITHDRAWAL, request.getAmount());
+    if (earlier.isPresent()) {
+      return earlier.get();
+    }
 
     validateAccountIsActive(account);
 
@@ -177,7 +219,8 @@ public class SavingsAccountService {
         request.getAmount(),
         balanceBefore,
         balanceAfterWithdrawal,
-        "Savings withdrawal");
+        "Savings withdrawal",
+        reference);
     log.info("Withdrawal successful. New balance: {}", balanceAfterWithdrawal);
 
     return TransactionResponse.builder()
@@ -200,7 +243,19 @@ public class SavingsAccountService {
    */
   @Transactional
   public TransferResponse transfer(Long sourceAccountId, TransferRequest request) {
+    return transfer(sourceAccountId, request, null);
+  }
+
+  /*
+   * idempotencyKey works as for deposit, scoped to the source account. The
+   * key is stored on the outgoing leg and, under INCOMING_PREFIX, on the
+   * incoming one.
+   */
+  @Transactional
+  public TransferResponse transfer(
+      Long sourceAccountId, TransferRequest request, String idempotencyKey) {
     Long destinationAccountId = request.getDestinationAccountId();
+    String reference = idempotencyReference(sourceAccountId, idempotencyKey);
     log.info(
         "Processing transfer of {} from account ID: {} to account ID: {}",
         request.getAmount(),
@@ -222,6 +277,11 @@ public class SavingsAccountService {
     } else {
       destination = lockAccount(destinationAccountId);
       source = lockAccount(sourceAccountId);
+    }
+
+    Optional<TransferResponse> earlier = earlierTransfer(sourceAccountId, reference, request);
+    if (earlier.isPresent()) {
+      return earlier.get();
     }
 
     validateAccountIsActive(source);
@@ -247,7 +307,7 @@ public class SavingsAccountService {
         sourceBalanceBefore,
         sourceBalanceAfter,
         "Transfer to " + destination.getAccountNumber(),
-        null);
+        reference);
     saveTransaction(
         destination,
         TransactionType.TRANSFER_IN,
@@ -255,7 +315,7 @@ public class SavingsAccountService {
         destinationBalanceBefore,
         destinationBalanceAfter,
         "Transfer from " + source.getAccountNumber(),
-        null);
+        incomingReference(reference));
     log.info("Transfer successful. New balance of source account: {}", sourceBalanceAfter);
 
     return TransferResponse.builder()
@@ -498,6 +558,97 @@ public class SavingsAccountService {
         .build();
   }
 
+  /*
+   * The transaction reference a caller's Idempotency-Key is stored under, or
+   * null without one. Keys are scoped to the account, so two callers using
+   * the same key on different accounts do not clash; the unique reference
+   * column stops the same request being applied twice.
+   */
+  private String idempotencyReference(Long accountId, String idempotencyKey) {
+    if (idempotencyKey == null) {
+      return null;
+    }
+    if (!IDEMPOTENCY_KEY.matcher(idempotencyKey).matches()) {
+      throw new InvalidIdempotencyKeyException(
+          "Idempotency-Key must be 1 to "
+              + MAX_IDEMPOTENCY_KEY_LENGTH
+              + " visible characters with no spaces, for example a UUID");
+    }
+    return IDEMPOTENCY_PREFIX + accountId + "-" + idempotencyKey;
+  }
+
+  /*
+   * The result of the deposit or withdrawal already made with this reference,
+   * if any. A key reused for a different request is refused rather than
+   * ignored, since the caller clearly meant something else.
+   */
+  private Optional<TransactionResponse> earlierResult(
+      Long accountId, String reference, TransactionType type, BigDecimal amount) {
+    if (reference == null) {
+      return Optional.empty();
+    }
+    return savingsTransactionRepository
+        .findByReference(reference)
+        .map(
+            earlier -> {
+              if (earlier.getTransactionType() != type
+                  || earlier.getAmount().compareTo(amount) != 0) {
+                throw keyReused(reference, accountId);
+              }
+              log.info("Request with reference {} was already applied", reference);
+              return toTransactionResponse(accountId, earlier);
+            });
+  }
+
+  private Optional<TransferResponse> earlierTransfer(
+      Long sourceAccountId, String reference, TransferRequest request) {
+    if (reference == null) {
+      return Optional.empty();
+    }
+    Optional<SavingsTransaction> earlierOut =
+        savingsTransactionRepository.findByReference(reference);
+    if (earlierOut.isEmpty()) {
+      return Optional.empty();
+    }
+    SavingsTransaction out = earlierOut.get();
+    SavingsTransaction in =
+        savingsTransactionRepository
+            .findByReference(incomingReference(reference))
+            .orElseThrow(() -> keyReused(reference, sourceAccountId));
+    if (out.getTransactionType() != TransactionType.TRANSFER_OUT
+        || out.getAmount().compareTo(request.getAmount()) != 0
+        || !in.getAccount().getId().equals(request.getDestinationAccountId())) {
+      throw keyReused(reference, sourceAccountId);
+    }
+    log.info("Transfer with reference {} was already applied", reference);
+    return Optional.of(
+        TransferResponse.builder()
+            .sourceAccountId(sourceAccountId)
+            .destinationAccountId(request.getDestinationAccountId())
+            .destinationAccountNumber(in.getAccount().getAccountNumber())
+            .amount(out.getAmount())
+            .balanceBefore(out.getBalanceBefore())
+            .newBalance(out.getBalanceAfter())
+            .transactionDate(out.getTransactionDate())
+            .build());
+  }
+
+  private static String incomingReference(String reference) {
+    return reference == null
+        ? null
+        : INCOMING_PREFIX + reference.substring(IDEMPOTENCY_PREFIX.length());
+  }
+
+  private IdempotencyKeyConflictException keyReused(String reference, Long accountId) {
+    String key = reference.substring((IDEMPOTENCY_PREFIX + accountId + "-").length());
+    return new IdempotencyKeyConflictException(
+        "Idempotency-Key "
+            + key
+            + " was already used on account "
+            + accountId
+            + " for a different request");
+  }
+
   private SavingsAccount lockAccount(Long accountId) {
     return savingsAccountRepository
         .findByIdForUpdate(accountId)
@@ -547,8 +698,22 @@ public class SavingsAccountService {
       BigDecimal balanceBefore,
       BigDecimal balanceAfter,
       String description) {
+    recordTransaction(
+        account, type, ledgerType, amount, balanceBefore, balanceAfter, description, null);
+  }
+
+  private void recordTransaction(
+      SavingsAccount account,
+      TransactionType type,
+      String ledgerType,
+      BigDecimal amount,
+      BigDecimal balanceBefore,
+      BigDecimal balanceAfter,
+      String description,
+      String transactionReference) {
     SavingsTransaction savedTransaction =
-        saveTransaction(account, type, amount, balanceBefore, balanceAfter, description, null);
+        saveTransaction(
+            account, type, amount, balanceBefore, balanceAfter, description, transactionReference);
 
     String reference = account.getAccountNumber() + "-" + savedTransaction.getId();
     ledgerPostingService.record(ledgerType, amount, reference, description + " - " + reference);

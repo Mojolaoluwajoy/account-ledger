@@ -63,6 +63,9 @@ curl -X POST $G/clients -H "$J" -d '{"firstName":"Ada","lastName":"Obi",
 curl -X POST $G/savings-accounts -H "$J" -d '{"clientId":1,"productId":1,"initialDeposit":500}'
 curl -X POST $G/savings-accounts/1/deposit  -H "$J" -d '{"amount":250}'
 curl -X POST $G/savings-accounts/1/withdraw -H "$J" -d '{"amount":100}'
+# Safe to send again if the answer is lost: the money moves only once
+curl -X POST $G/savings-accounts/1/deposit -H "$J" -H "Idempotency-Key: 6f1c-deposit-1" \
+  -d '{"amount":250}'
 curl "$G/savings-accounts/1/transactions?page=0&size=20"
 
 # 4. A transfer to another savings account (open a second one first)
@@ -113,6 +116,13 @@ curl "$G/ledger/entries?page=0&size=20"
   account `CLOSED`. A closed account takes no more money in or out, and earns
   no interest. A fixed deposit payout due to a closed account fails and can be
   retried into another account (see the admin endpoints).
+- **Sending a request again.** Deposits, withdrawals and transfers accept an
+  optional `Idempotency-Key` header (for example a UUID, up to 100
+  characters). If the answer is lost and the request is sent again with the
+  same key, the first result comes back and the money moves only once. The
+  key belongs to the account, so the same key on another account is a new
+  request; reusing it on the same account for a different amount, type or
+  destination gets a 409. Without the header every request is applied.
 - **Concurrency.** Balance changes lock the account row; transfers lock both
   rows, lowest ID first. A request gives up with a 503 after waiting 3 seconds
   for a lock. Client updates can send back the `version` they were based on and

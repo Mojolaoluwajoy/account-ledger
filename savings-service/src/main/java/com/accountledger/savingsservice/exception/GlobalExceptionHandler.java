@@ -72,6 +72,18 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
   }
 
+  @ExceptionHandler(InvalidIdempotencyKeyException.class)
+  public ResponseEntity<ApiResponse<Object>> handleInvalidIdempotencyKey(
+      InvalidIdempotencyKeyException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
+  }
+
+  @ExceptionHandler(IdempotencyKeyConflictException.class)
+  public ResponseEntity<ApiResponse<Object>> handleIdempotencyKeyConflict(
+      IdempotencyKeyConflictException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
+  }
+
   @ExceptionHandler(PayoutReferenceConflictException.class)
   public ResponseEntity<ApiResponse<Object>> handlePayoutReferenceConflict(
       PayoutReferenceConflictException ex) {
